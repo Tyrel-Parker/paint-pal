@@ -10,15 +10,21 @@ export const DIFFICULTY_COLOR_RANGE: Record<Difficulty, [number, number]> = {
 export interface PuzzleRegion {
   id: number
   colorNumber: number
-  /** SVG path `d` attribute for this region's outline */
-  path: string
   /** Centroid in image coordinates, used to place the number label */
   labelX: number
   labelY: number
+  areaPx: number
 }
 
 /** Maps a region's color number to its original (or user-recolored) hex value */
 export type Palette = Record<number, string>
+
+export interface LabelMapRLE {
+  width: number
+  height: number
+  /** Row-major, alternating [regionId, runLength, ...]; runs may span rows. */
+  runs: number[]
+}
 
 export interface Puzzle {
   id: string
@@ -26,6 +32,8 @@ export interface Puzzle {
   difficulty: Difficulty
   width: number
   height: number
+  /** Per-pixel region id, run-length encoded; decode with `decodeLabelMap`. */
+  labelMap: LabelMapRLE
   regions: PuzzleRegion[]
   palette: Palette
   source: 'builtin' | 'user'
