@@ -32,9 +32,10 @@ async function processImage(fileName: string): Promise<Puzzle[]> {
 
   for (const difficulty of DIFFICULTIES) {
     const id = `${slug}-${difficulty}`
+    const maxDimension = MAX_DIMENSION[difficulty]
     const { data, info } = await sharp(inputPath)
       .rotate()
-      .resize(MAX_DIMENSION, MAX_DIMENSION, { fit: 'inside', withoutEnlargement: true })
+      .resize(maxDimension, maxDimension, { fit: 'inside', withoutEnlargement: true })
       .ensureAlpha()
       .raw()
       .toBuffer({ resolveWithObject: true })

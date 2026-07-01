@@ -10,7 +10,7 @@ import { TARGET_COLOR_COUNT } from './segmentation/constants'
  */
 export async function processPhoto(file: File, difficulty: Difficulty, id: string, name: string): Promise<Puzzle> {
   const bitmap = await createImageBitmap(file)
-  const scale = Math.min(1, MAX_DIMENSION / Math.max(bitmap.width, bitmap.height))
+  const scale = Math.min(1, MAX_DIMENSION[difficulty] / Math.max(bitmap.width, bitmap.height))
   const width = Math.round(bitmap.width * scale)
   const height = Math.round(bitmap.height * scale)
 

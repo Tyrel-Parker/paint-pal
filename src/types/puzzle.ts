@@ -1,10 +1,10 @@
 export type Difficulty = 'easy' | 'medium' | 'hard'
 
-// easy: 6-8 colors, medium: 9-15, hard: 15-20
+// easy: 7-9 colors, medium: 12-18, hard: 20-28
 export const DIFFICULTY_COLOR_RANGE: Record<Difficulty, [number, number]> = {
-  easy: [6, 8],
-  medium: [9, 15],
-  hard: [15, 20],
+  easy: [7, 9],
+  medium: [12, 18],
+  hard: [20, 28],
 }
 
 export interface PuzzleRegion {
