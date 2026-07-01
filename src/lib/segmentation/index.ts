@@ -1,5 +1,6 @@
 import type { Palette, PuzzleRegion } from '../../types/puzzle'
 import { quantizeImage } from './quantize'
+import { smoothPaletteIndex } from './smooth'
 import { labelRegions, computeAdjacency } from './connectedComponents'
 import { mergeSmallRegions } from './mergeSmallRegions'
 import { encodeLabelMap } from './rle'
@@ -41,7 +42,8 @@ export function segmentImage(
   options: SegmentationOptions = {},
 ): SegmentationResult {
   const { paletteIndex, paletteColors } = quantizeImage(pixels, width, height, colorCount)
-  const { labels, areaByRegion, colorIndexByRegion } = labelRegions(paletteIndex, width, height)
+  const smoothedIndex = smoothPaletteIndex(paletteIndex, width, height, 2)
+  const { labels, areaByRegion, colorIndexByRegion } = labelRegions(smoothedIndex, width, height)
   const adjacency = computeAdjacency(labels, width, height)
 
   const minAreaPx =
