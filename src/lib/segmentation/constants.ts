@@ -27,3 +27,18 @@ export const MERGE_THRESHOLD: Record<Difficulty, { fraction: number; floorPx: nu
   medium: { fraction: 0.002, floorPx: 550 },
   hard: { fraction: 0.0006, floorPx: 450 },
 }
+
+/**
+ * Applied to pixels a subject mask marks as background: merges much more
+ * aggressively than MERGE_THRESHOLD so background stays present but simple,
+ * instead of competing with the subject for visual attention. Tuned
+ * empirically (~7.3x MERGE_THRESHOLD's floor) against bear/lion/dragon/snake
+ * — the worst-offending busy-background photos — plus cat as a regression
+ * check, using scripts/tune-subject-mask.ts (deleted after use, same
+ * throwaway-script pattern as the rest of this file's tuning).
+ */
+export const BACKGROUND_MERGE_THRESHOLD: Record<Difficulty, { fraction: number; floorPx: number }> = {
+  easy: { fraction: 0.00001, floorPx: 3600 },
+  medium: { fraction: 0.00001, floorPx: 4000 },
+  hard: { fraction: 0.00001, floorPx: 3300 },
+}

@@ -5,6 +5,19 @@ export interface MergeResult {
   colorIndexByFinalRegion: Map<number, number>
 }
 
+export interface MergeSmallRegionsOptions {
+  /**
+   * When set (with `regionForegroundConfidence`), `minAreaPx` becomes the
+   * foreground threshold and this becomes the background one — each
+   * region's effective minimum area is interpolated between them by its
+   * own confidence, so background regions merge away much more
+   * aggressively than foreground ones without losing subject detail.
+   */
+  backgroundMinAreaPx?: number
+  /** 0-1 per *original* (pre-merge) region id. Roots are always original ids (see merge()), so this stays valid throughout merging without needing to be tracked/updated. */
+  regionForegroundConfidence?: Map<number, number>
+}
+
 /**
  * Merges regions smaller than `minAreaPx` into whichever neighbor shares the
  * longest border, via union-find. A region's neighbors are always a
@@ -18,11 +31,19 @@ export function mergeSmallRegions(
   colorIndexByRegion: number[],
   adjacency: Map<number, Map<number, number>>,
   minAreaPx: number,
+  options: MergeSmallRegionsOptions = {},
 ): MergeResult {
+  const { backgroundMinAreaPx, regionForegroundConfidence } = options
   const regionCount = areaByRegion.length
   const parent = Int32Array.from({ length: regionCount }, (_, i) => i)
   const area = [...areaByRegion]
   const colorIndex = [...colorIndexByRegion]
+
+  function effectiveMinArea(regionId: number): number {
+    if (backgroundMinAreaPx === undefined || !regionForegroundConfidence) return minAreaPx
+    const confidence = regionForegroundConfidence.get(regionId) ?? 0
+    return minAreaPx + (1 - confidence) * (backgroundMinAreaPx - minAreaPx)
+  }
 
   function find(id: number): number {
     let root = id
@@ -77,20 +98,20 @@ export function mergeSmallRegions(
 
   const pending = new Set<number>()
   for (let id = 0; id < regionCount; id++) {
-    if (area[id] < minAreaPx) pending.add(id)
+    if (area[id] < effectiveMinArea(id)) pending.add(id)
   }
 
   while (pending.size > 0) {
     const [id] = pending
     pending.delete(id)
     const root = find(id)
-    if (root !== id || area[root] >= minAreaPx) continue
+    if (root !== id || area[root] >= effectiveMinArea(root)) continue
 
     const neighbor = bestNeighbor(root)
     if (neighbor === undefined) continue // whole image is one region; nothing to merge into
 
     merge(root, neighbor)
-    if (area[neighbor] < minAreaPx) pending.add(neighbor)
+    if (area[neighbor] < effectiveMinArea(neighbor)) pending.add(neighbor)
   }
 
   const areaByFinalRegion = new Map<number, number>()

@@ -59,28 +59,55 @@ function percentileThreshold(magnitude: Float32Array, percentile: number): numbe
   return sorted[index]
 }
 
+export interface GenerateOutlineOptions {
+  /** Per-pixel foreground confidence (0-255), same width*height layout as `pixels`. */
+  subjectMask?: Uint8Array
+  /** Percentile used where subjectMask (if any) says foreground: lower = more inclusive. */
+  foregroundPercentile?: number
+  /** Percentile used where subjectMask says background: higher = stricter, fewer lines. */
+  backgroundPercentile?: number
+}
+
 /**
- * `edgePercentile` (0-1) controls line density: 0.9 means the strongest 10% of
- * gradients become edges. Tuned empirically against real photos, not derived —
- * see scripts/tune-outline.ts.
+ * Percentiles control line density: 0.9 means the strongest 10% of gradients
+ * become edges. Tuned empirically against real photos, not derived — see
+ * scripts/tune-outline.ts and scripts/tune-subject-mask.ts (both deleted
+ * after use). `backgroundPercentile` needed to go much higher than expected
+ * (0.999, not ~0.96) — busy natural textures like rock/foliage turned out to
+ * have surprisingly strong local gradients, comparable to or stronger than
+ * many real subject edges, so a moderate percentile bump barely thinned them
+ * out; only a very strict background threshold actually quieted them while
+ * leaving the subject fully detailed. Without `subjectMask`,
+ * `foregroundPercentile` applies uniformly (identical to the original
+ * single-threshold behavior).
  */
 export function generateOutline(
   pixels: Uint8ClampedArray,
   width: number,
   height: number,
-  edgePercentile = 0.9,
+  options: GenerateOutlineOptions = {},
 ): Uint8ClampedArray {
+  const { subjectMask, foregroundPercentile = 0.9, backgroundPercentile = 0.999 } = options
   const size = width * height
   const gray = toGrayscale(pixels, size)
   const blurred = boxBlur3x3(gray, width, height)
   const magnitude = sobelMagnitude(blurred, width, height)
-  const threshold = percentileThreshold(magnitude, edgePercentile)
 
   const out = new Uint8ClampedArray(size * 4)
+
+  if (!subjectMask) {
+    const threshold = percentileThreshold(magnitude, foregroundPercentile)
+    for (let i = 0; i < size; i++) {
+      out[i * 4 + 3] = magnitude[i] >= threshold ? 255 : 0
+    }
+    return out
+  }
+
+  const fgThreshold = percentileThreshold(magnitude, foregroundPercentile)
+  const bgThreshold = percentileThreshold(magnitude, backgroundPercentile)
   for (let i = 0; i < size; i++) {
-    const o = i * 4
-    const isEdge = magnitude[i] >= threshold
-    out[o + 3] = isEdge ? 255 : 0
+    const threshold = subjectMask[i] > 128 ? fgThreshold : bgThreshold
+    out[i * 4 + 3] = magnitude[i] >= threshold ? 255 : 0
   }
   return out
 }

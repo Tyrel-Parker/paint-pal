@@ -50,11 +50,23 @@ export function segmentImage(
     options.minRegionAreaPx ??
     Math.max(width * height * DEFAULT_MIN_AREA_FRACTION, DEFAULT_MIN_AREA_FLOOR_PX)
 
+  let regionForegroundConfidence: Map<number, number> | undefined
+  if (options.subjectMask) {
+    const mask = options.subjectMask
+    const maskSum = new Float64Array(areaByRegion.length)
+    for (let i = 0; i < labels.length; i++) maskSum[labels[i]] += mask[i]
+    regionForegroundConfidence = new Map()
+    for (let id = 0; id < areaByRegion.length; id++) {
+      regionForegroundConfidence.set(id, areaByRegion[id] > 0 ? maskSum[id] / areaByRegion[id] / 255 : 0)
+    }
+  }
+
   const { finalRegionId, areaByFinalRegion, colorIndexByFinalRegion } = mergeSmallRegions(
     areaByRegion,
     colorIndexByRegion,
     adjacency,
     minAreaPx,
+    { backgroundMinAreaPx: options.backgroundMinRegionAreaPx, regionForegroundConfidence },
   )
 
   // Renumber surviving root ids to sequential 1..N in raster first-appearance order,
@@ -121,5 +133,5 @@ export function segmentImage(
   }
 }
 
-export { MAX_DIMENSION, TARGET_COLOR_COUNT, MERGE_THRESHOLD } from './constants'
+export { MAX_DIMENSION, TARGET_COLOR_COUNT, MERGE_THRESHOLD, BACKGROUND_MERGE_THRESHOLD } from './constants'
 export { decodeLabelMap } from './rle'
