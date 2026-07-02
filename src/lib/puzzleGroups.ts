@@ -4,6 +4,9 @@ export interface PuzzleGroup {
   key: string
   name: string
   thumbnail: string
+  outline: string
+  outlineWidth: number
+  outlineHeight: number
   variants: Partial<Record<Difficulty, Puzzle>>
 }
 
@@ -17,7 +20,15 @@ export function groupPuzzlesByImage(puzzles: Puzzle[]): PuzzleGroup[] {
     const key = puzzle.id.replace(DIFFICULTY_SUFFIX, '')
     let group = groups.get(key)
     if (!group) {
-      group = { key, name: puzzle.name, thumbnail: puzzle.thumbnail, variants: {} }
+      group = {
+        key,
+        name: puzzle.name,
+        thumbnail: puzzle.thumbnail,
+        outline: puzzle.outline,
+        outlineWidth: puzzle.outlineWidth,
+        outlineHeight: puzzle.outlineHeight,
+        variants: {},
+      }
       groups.set(key, group)
     }
     group.variants[puzzle.difficulty] = puzzle

@@ -38,6 +38,10 @@ export interface Puzzle {
   palette: Palette
   source: 'builtin' | 'user'
   thumbnail: string
+  /** Whole-photo line-art outline (transparent background), shared across all difficulty variants of the same image. */
+  outline: string
+  outlineWidth: number
+  outlineHeight: number
 }
 
 export type PaintMode = 'numbers' | 'free'
@@ -47,10 +51,12 @@ export interface Progress {
   key: string
   puzzleId: string
   mode: PaintMode
-  /** region id -> hex color currently filled in */
+  /** region id -> hex color currently filled in (numbers mode only) */
   filledRegions: Record<number, string>
-  /** palette as customized by the kid before/while playing, if changed from default */
+  /** palette as customized by the kid before/while playing, if changed from default (numbers mode only) */
   customPalette?: Palette
+  /** freehand paint layer snapshot as a data URL (free mode only) */
+  paintedImage?: string
   updatedAt: number
 }
 

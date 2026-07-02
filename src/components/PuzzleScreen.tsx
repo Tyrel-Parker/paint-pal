@@ -1,28 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Palette, PaintMode, Progress, Puzzle } from '../types/puzzle'
+import type { Palette, Progress, Puzzle } from '../types/puzzle'
 import { deleteProgress, getProgress, saveFinishedWork, saveProgress } from '../lib/storage'
-import { matchFillNumbers, freeFill } from '../lib/fillRules'
+import { matchFillNumbers } from '../lib/fillRules'
 import PuzzleCanvas, { type PuzzleCanvasHandle } from './PuzzleCanvas'
 import PaletteEditor from './PaletteEditor'
-import ColorPicker from './ColorPicker'
-import { PRESET_COLORS } from '../lib/colorPresets'
 
 interface PuzzleScreenProps {
   puzzle: Puzzle
-  mode: PaintMode
   onExit: () => void
   onFinished: () => void
 }
 
 type Phase = 'palette-editor' | 'painting'
 
-export default function PuzzleScreen({ puzzle, mode, onExit, onFinished }: PuzzleScreenProps) {
+const MODE = 'numbers' as const
+
+export default function PuzzleScreen({ puzzle, onExit, onFinished }: PuzzleScreenProps) {
   const [status, setStatus] = useState<'loading' | 'ready'>('loading')
-  const [phase, setPhase] = useState<Phase>(mode === 'numbers' ? 'palette-editor' : 'painting')
+  const [phase, setPhase] = useState<Phase>('palette-editor')
   const [filledRegions, setFilledRegions] = useState<Record<number, string>>({})
   const [customPalette, setCustomPalette] = useState<Palette | undefined>(undefined)
   const [selectedColorNumber, setSelectedColorNumber] = useState<number | null>(null)
-  const [selectedColor, setSelectedColor] = useState(PRESET_COLORS[0])
 
   const canvasRef = useRef<PuzzleCanvasHandle>(null)
   const hasAutoFinishedRef = useRef(false)
@@ -31,7 +29,7 @@ export default function PuzzleScreen({ puzzle, mode, onExit, onFinished }: Puzzl
 
   useEffect(() => {
     let cancelled = false
-    getProgress(puzzle.id, mode).then((progress) => {
+    getProgress(puzzle.id, MODE).then((progress) => {
       if (cancelled) return
       if (progress) {
         setFilledRegions(progress.filledRegions)
@@ -46,13 +44,13 @@ export default function PuzzleScreen({ puzzle, mode, onExit, onFinished }: Puzzl
     return () => {
       cancelled = true
     }
-  }, [puzzle.id, mode, puzzle.regions.length])
+  }, [puzzle.id, puzzle.regions.length])
 
   function persist(nextFilled: Record<number, string>, nextPalette: Palette | undefined) {
     const progress: Progress = {
-      key: `${puzzle.id}:${mode}`,
+      key: `${puzzle.id}:${MODE}`,
       puzzleId: puzzle.id,
-      mode,
+      mode: MODE,
       filledRegions: nextFilled,
       customPalette: nextPalette,
       updatedAt: Date.now(),
@@ -64,14 +62,14 @@ export default function PuzzleScreen({ puzzle, mode, onExit, onFinished }: Puzzl
     const region = puzzle.regions.find((r) => r.id === regionId)
     if (!region) return
 
-    const colorHex = mode === 'numbers' ? matchFillNumbers(region, palette, selectedColorNumber) : freeFill(selectedColor)
+    const colorHex = matchFillNumbers(region, palette, selectedColorNumber)
     if (colorHex === null) return
 
     const next = { ...filledRegions, [regionId]: colorHex }
     setFilledRegions(next)
     persist(next, customPalette)
 
-    if (mode === 'numbers' && !hasAutoFinishedRef.current && Object.keys(next).length === puzzle.regions.length) {
+    if (!hasAutoFinishedRef.current && Object.keys(next).length === puzzle.regions.length) {
       hasAutoFinishedRef.current = true
       handleFinish()
     }
@@ -81,9 +79,9 @@ export default function PuzzleScreen({ puzzle, mode, onExit, onFinished }: Puzzl
     const image = canvasRef.current?.captureSnapshot()
     if (!image) return
     await saveFinishedWork({
-      key: `${puzzle.id}:${mode}:${Date.now()}`,
+      key: `${puzzle.id}:${MODE}:${Date.now()}`,
       puzzleId: puzzle.id,
-      mode,
+      mode: MODE,
       puzzleName: puzzle.name,
       completedAt: Date.now(),
       image,
@@ -95,7 +93,7 @@ export default function PuzzleScreen({ puzzle, mode, onExit, onFinished }: Puzzl
     if (!confirm('Clear your progress and start this puzzle over?')) return
     setFilledRegions({})
     hasAutoFinishedRef.current = false
-    await deleteProgress(puzzle.id, mode)
+    await deleteProgress(puzzle.id, MODE)
   }
 
   function handlePaletteDone() {
@@ -107,7 +105,7 @@ export default function PuzzleScreen({ puzzle, mode, onExit, onFinished }: Puzzl
     return <p className="loading">Loading...</p>
   }
 
-  if (mode === 'numbers' && phase === 'palette-editor') {
+  if (phase === 'palette-editor') {
     return (
       <main className="puzzle-screen">
         <button className="back-button" onClick={onExit}>
@@ -130,11 +128,9 @@ export default function PuzzleScreen({ puzzle, mode, onExit, onFinished }: Puzzl
         </button>
         <h2>{puzzle.name}</h2>
         <div className="puzzle-header-actions">
-          {mode === 'numbers' && (
-            <button onClick={() => setPhase('palette-editor')} aria-label="Edit colors">
-              🎨
-            </button>
-          )}
+          <button onClick={() => setPhase('palette-editor')} aria-label="Edit colors">
+            🎨
+          </button>
           <button onClick={handleClear} aria-label="Clear and start over">
             🔄
           </button>
@@ -145,32 +141,23 @@ export default function PuzzleScreen({ puzzle, mode, onExit, onFinished }: Puzzl
         ref={canvasRef}
         puzzle={puzzle}
         filledRegions={filledRegions}
-        showLabels={mode === 'numbers'}
+        showLabels
         onRegionTap={handleRegionTap}
       />
 
-      {mode === 'numbers' ? (
-        <ul className="palette-swatch-list playing">
-          {paletteEntries.map(([colorNumber, hex]) => (
-            <li key={colorNumber}>
-              <button
-                className={`palette-swatch${colorNumber === selectedColorNumber ? ' selected' : ''}`}
-                style={{ backgroundColor: hex }}
-                onClick={() => setSelectedColorNumber(colorNumber)}
-              >
-                {colorNumber}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <>
-          <ColorPicker value={selectedColor} onChange={setSelectedColor} />
-          <button className="primary-button" onClick={handleFinish}>
-            I'm done! 🎉
-          </button>
-        </>
-      )}
+      <ul className="palette-swatch-list playing">
+        {paletteEntries.map(([colorNumber, hex]) => (
+          <li key={colorNumber}>
+            <button
+              className={`palette-swatch${colorNumber === selectedColorNumber ? ' selected' : ''}`}
+              style={{ backgroundColor: hex }}
+              onClick={() => setSelectedColorNumber(colorNumber)}
+            >
+              {colorNumber}
+            </button>
+          </li>
+        ))}
+      </ul>
     </main>
   )
 }

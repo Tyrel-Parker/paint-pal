@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import sharp from 'sharp'
 import { segmentImage, MAX_DIMENSION, TARGET_COLOR_COUNT, MERGE_THRESHOLD } from '../src/lib/segmentation/index.js'
+import { generateOutline } from '../src/lib/outline.js'
 import { DIFFICULTY_COLOR_RANGE, type Difficulty, type Puzzle } from '../src/types/puzzle.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -24,11 +25,36 @@ function humanize(slug: string): string {
   return slug.split('-').map((word) => word[0].toUpperCase() + word.slice(1)).join(' ')
 }
 
+async function generateOutlineAsset(inputPath: string, slug: string) {
+  const maxDimension = MAX_DIMENSION.medium
+  const { data, info } = await sharp(inputPath)
+    .rotate()
+    .resize(maxDimension, maxDimension, { fit: 'inside', withoutEnlargement: true })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+
+  const pixels = new Uint8ClampedArray(data.buffer, data.byteOffset, data.length)
+  const { width, height } = info
+  const outlineRgba = generateOutline(pixels, width, height)
+
+  const outline = `puzzles/images/${slug}-outline.png`
+  await sharp(Buffer.from(outlineRgba), { raw: { width, height, channels: 4 } })
+    .png()
+    .toFile(path.join(IMAGES_DIR, `${slug}-outline.png`))
+
+  return { outline, outlineWidth: width, outlineHeight: height }
+}
+
 async function processImage(fileName: string): Promise<Puzzle[]> {
   const inputPath = path.join(SOURCE_DIR, fileName)
   const slug = slugify(fileName)
   const name = humanize(slug)
   const puzzles: Puzzle[] = []
+
+  const thumbnail = `puzzles/images/${slug}-thumb.webp`
+  await sharp(inputPath).rotate().resize(240).toFile(path.join(IMAGES_DIR, `${slug}-thumb.webp`))
+  const { outline, outlineWidth, outlineHeight } = await generateOutlineAsset(inputPath, slug)
 
   for (const difficulty of DIFFICULTIES) {
     const id = `${slug}-${difficulty}`
@@ -56,9 +82,6 @@ async function processImage(fileName: string): Promise<Puzzle[]> {
       )
     }
 
-    const thumbnail = `puzzles/images/${id}-thumb.webp`
-    await sharp(inputPath).rotate().resize(240).toFile(path.join(IMAGES_DIR, `${id}-thumb.webp`))
-
     puzzles.push({
       id,
       name,
@@ -70,6 +93,9 @@ async function processImage(fileName: string): Promise<Puzzle[]> {
       palette: result.palette,
       source: 'builtin',
       thumbnail,
+      outline,
+      outlineWidth,
+      outlineHeight,
     })
 
     console.log(`  ${id}: ${result.regions.length} regions, ${finalColorCount} colors`)

@@ -9,8 +9,3 @@ export function matchFillNumbers(
   if (selectedColorNumber === null || selectedColorNumber !== region.colorNumber) return null
   return palette[region.colorNumber] ?? null
 }
-
-/** Free mode: any tap fills with whatever color is currently selected. */
-export function freeFill(selectedColor: string): string {
-  return selectedColor
-}
