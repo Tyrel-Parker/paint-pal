@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Puzzle } from '../types/puzzle'
 import { processPhotoAll, type ProcessStage } from '../lib/processPhoto'
 import { saveUserPuzzle } from '../lib/storage'
+import Breadcrumbs from './Breadcrumbs'
 
 interface AddPhotoScreenProps {
   file: File
@@ -64,10 +65,12 @@ export default function AddPhotoScreen({ file, onSaved, onCancel }: AddPhotoScre
   return (
     <main className="puzzle-screen">
       <div className="puzzle-header">
-        <button className="back-button" onClick={onCancel} disabled={processing}>
-          ← Back
-        </button>
-        <h2>Add your photo</h2>
+        <Breadcrumbs
+          crumbs={[
+            { label: '🏠 Gallery', onTap: processing ? undefined : onCancel },
+            { label: '＋ Add photo' },
+          ]}
+        />
         <div className="puzzle-header-actions" />
       </div>
 

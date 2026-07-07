@@ -1,18 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Progress } from '../types/puzzle'
+import type { FinishedWork, Progress } from '../types/puzzle'
 import { deleteProgress, getProgress, saveFinishedWork, saveProgress } from '../lib/storage'
 import type { PuzzleGroup } from '../lib/puzzleGroups'
 import FreePaintCanvas, { type FreePaintCanvasHandle } from './FreePaintCanvas'
 import ColorPicker from './ColorPicker'
 import { PRESET_COLORS } from '../lib/colorPresets'
+import Breadcrumbs, { type Crumb } from './Breadcrumbs'
 
 interface FreePaintScreenProps {
   group: PuzzleGroup
-  onExit: () => void
-  onFinished: () => void
+  /** Path back up (Gallery / picture); this screen appends "Free Paint". */
+  baseCrumbs: Crumb[]
+  onFinished: (work: FinishedWork) => void
 }
 
-export default function FreePaintScreen({ group, onExit, onFinished }: FreePaintScreenProps) {
+export default function FreePaintScreen({ group, baseCrumbs, onFinished }: FreePaintScreenProps) {
   const [status, setStatus] = useState<'loading' | 'ready'>('loading')
   const [paintedImage, setPaintedImage] = useState<string | undefined>(undefined)
   const [color, setColor] = useState(PRESET_COLORS[0])
@@ -55,15 +57,16 @@ export default function FreePaintScreen({ group, onExit, onFinished }: FreePaint
   async function handleFinish() {
     const image = canvasRef.current?.captureSnapshot()
     if (!image) return
-    await saveFinishedWork({
+    const work: FinishedWork = {
       key: `${group.key}:free:${Date.now()}`,
       puzzleId: group.key,
       mode: 'free',
       puzzleName: group.name,
       completedAt: Date.now(),
       image,
-    })
-    onFinished()
+    }
+    await saveFinishedWork(work)
+    onFinished(work)
   }
 
   if (status === 'loading') {
@@ -73,10 +76,7 @@ export default function FreePaintScreen({ group, onExit, onFinished }: FreePaint
   return (
     <main className="puzzle-screen">
       <div className="puzzle-header">
-        <button className="back-button" onClick={onExit}>
-          ← Back
-        </button>
-        <h2>{group.name}</h2>
+        <Breadcrumbs crumbs={[...baseCrumbs, { label: '🎨 Free Paint' }]} />
         <div className="puzzle-header-actions">
           <button onClick={handleClear} aria-label="Clear and start over">
             🔄

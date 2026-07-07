@@ -1,23 +1,29 @@
 /**
- * Free Paint coloring-book outline, derived from a coarse segmentation
- * instead of edge detection. Region boundaries are closed curves by
- * construction, so every line encloses a fillable shape — the old
- * Sobel-threshold approach produced broken speckles that never joined up.
+ * Free Paint coloring-book outline. Three line sources, composed like an
+ * actual coloring page:
  *
- * Line hierarchy, real-coloring-book style:
- *   - subject silhouette: bold
- *   - features inside the subject: medium
- *   - background shape boundaries: thin (and few — OUTLINE_PARAMS collapses
- *     the background to a handful of big regions)
+ *   1. Subject silhouette (from the coarse segmentation) — bold, closed.
+ *   2. Feature lines inside the subject (Canny-style edges on the smoothed
+ *      lightness channel) — eyes, nose, mouth, ear lines, leg separations.
+ *      These are what make a bear *look like a bear*; region boundaries
+ *      alone give a cookie-cutter with shading blobs.
+ *   3. Interior/background region boundaries — kept only where the two
+ *      regions' colors differ strongly (real structure like mane-vs-face),
+ *      so soft shading transitions don't add noise lines.
  */
 
 import { segmentImage, decodeLabelMap, OUTLINE_PARAMS, effectiveMinArea } from './segmentation'
+import { rgbaToLab, hexToLab } from './segmentation/lab'
+import { smoothLab } from './segmentation/bilateral'
+import { detectFeatureLines, detectDarkMarks } from './segmentation/edges'
 
 const INK = [31, 31, 31] as const
 
 const SILHOUETTE_DILATE = 2 // ~6px stroke after the 2px base boundary
-const INTERIOR_DILATE = 1 // ~4px
-const BACKGROUND_DILATE = 0 // 2px base only
+const FEATURE_DILATE = 1 // ~3px
+const REGION_LINE_DILATE = 0 // 2px base only
+/** Region boundaries survive only if the two sides' palette colors differ by at least this ΔE. */
+const REGION_LINE_MIN_DELTA_E = 18
 
 export interface GenerateOutlineOptions {
   /** Per-pixel foreground confidence (0-255), same width*height layout as `pixels`. */
@@ -47,6 +53,23 @@ function dilateDisc(mask: Uint8Array, width: number, height: number, radius: num
   return out
 }
 
+/** Feature detection needs texture *lightly* tamed: enough to kill fur/grass
+ * stubble, far less than the segmentation smoothing (which would erase the
+ * eyes and nose we're trying to find). */
+const FEATURE_SMOOTHING = { iterations: 2, rangeSigma: 8 }
+/** Focus mask erosion: keeps silhouette-adjacent contrast out of the feature
+ * detector, so interior features (not the boundary) set the thresholds. */
+const FOCUS_ERODE_RADIUS = 6
+
+function erodeDisc(mask: Uint8Array, width: number, height: number, radius: number): Uint8Array {
+  const inverted = new Uint8Array(mask.length)
+  for (let i = 0; i < mask.length; i++) inverted[i] = mask[i] > 128 ? 0 : 1
+  const grown = dilateDisc(inverted, width, height, radius)
+  const out = new Uint8Array(mask.length)
+  for (let i = 0; i < mask.length; i++) out[i] = grown[i] ? 0 : 255
+  return out
+}
+
 export function generateOutline(
   pixels: Uint8ClampedArray,
   width: number,
@@ -56,21 +79,33 @@ export function generateOutline(
   const { subjectMask } = options
   const size = width * height
 
+  const lab = rgbaToLab(pixels, size)
+  const smoothedLab = smoothLab(lab, width, height, OUTLINE_PARAMS.smoothing)
+
   const result = segmentImage(pixels, width, height, OUTLINE_PARAMS.colorCount, {
     minRegionAreaPx: effectiveMinArea(OUTLINE_PARAMS.minRegionArea, width, height),
     backgroundMinRegionAreaPx: effectiveMinArea(OUTLINE_PARAMS.backgroundMinRegionArea, width, height),
     subjectMask,
     backgroundSimilarityDeltaE: OUTLINE_PARAMS.backgroundSimilarityDeltaE,
     smoothing: OUTLINE_PARAMS.smoothing,
+    smoothedLab,
     modeFilterRadius: OUTLINE_PARAMS.modeFilterRadius,
   })
   const labels = decodeLabelMap(result.labelMap)
 
-  // Region-level subject membership, so the silhouette line coincides exactly
-  // with segmentation boundaries instead of the raw (pixel-noisy) mask edge.
+  // Per-region subject membership and Lab color, so line decisions are made
+  // region-to-region instead of on noisy pixels.
+  const maxId = result.regions.reduce((max, r) => Math.max(max, r.id), 0)
+  const regionLab = new Float32Array((maxId + 1) * 3)
+  for (const region of result.regions) {
+    const [L, a, b] = hexToLab(result.palette[region.colorNumber])
+    regionLab[region.id * 3] = L
+    regionLab[region.id * 3 + 1] = a
+    regionLab[region.id * 3 + 2] = b
+  }
+
   let isSubjectRegion: Uint8Array | undefined
   if (subjectMask) {
-    const maxId = result.regions.reduce((max, r) => Math.max(max, r.id), 0)
     const confidenceSum = new Float64Array(maxId + 1)
     const count = new Float64Array(maxId + 1)
     for (let i = 0; i < size; i++) {
@@ -84,23 +119,22 @@ export function generateOutline(
   }
 
   const silhouette = new Uint8Array(size)
-  const interior = new Uint8Array(size)
-  const background = new Uint8Array(size)
+  const regionLines = new Uint8Array(size)
+  const minDeltaESq = REGION_LINE_MIN_DELTA_E * REGION_LINE_MIN_DELTA_E
 
   const classify = (i: number, j: number) => {
-    if (labels[i] === labels[j]) return
-    if (!isSubjectRegion) {
-      interior[i] = interior[j] = 1
+    const a = labels[i]
+    const b = labels[j]
+    if (a === b) return
+    if (isSubjectRegion && isSubjectRegion[a] !== isSubjectRegion[b]) {
+      silhouette[i] = silhouette[j] = 1
       return
     }
-    const a = isSubjectRegion[labels[i]]
-    const b = isSubjectRegion[labels[j]]
-    if (a !== b) {
-      silhouette[i] = silhouette[j] = 1
-    } else if (a) {
-      interior[i] = interior[j] = 1
-    } else {
-      background[i] = background[j] = 1
+    const dL = regionLab[a * 3] - regionLab[b * 3]
+    const da = regionLab[a * 3 + 1] - regionLab[b * 3 + 1]
+    const db = regionLab[a * 3 + 2] - regionLab[b * 3 + 2]
+    if (dL * dL + da * da + db * db >= minDeltaESq) {
+      regionLines[i] = regionLines[j] = 1
     }
   }
 
@@ -112,15 +146,38 @@ export function generateOutline(
     }
   }
 
+  // Feature lines from a lightly-smoothed lightness channel, restricted to
+  // the eroded subject interior — the background should stay quiet and the
+  // silhouette shouldn't hog the thresholds.
+  const featureLab = smoothLab(lab, width, height, FEATURE_SMOOTHING)
+  const luminance = new Float32Array(size)
+  for (let i = 0; i < size; i++) luminance[i] = featureLab[i * 3]
+  // Eroded mask ∩ subject regions: erosion keeps silhouette contrast from
+  // hogging the thresholds, the region intersection drops mask fuzz (stray
+  // whiskers/tufts) that floats outside the drawn silhouette.
+  let focusMask: Uint8Array | undefined
+  if (subjectMask) {
+    focusMask = erodeDisc(subjectMask, width, height, FOCUS_ERODE_RADIUS)
+    if (isSubjectRegion) {
+      for (let i = 0; i < size; i++) {
+        if (!isSubjectRegion[labels[i]]) focusMask[i] = 0
+      }
+    }
+  }
+  const features = detectFeatureLines(luminance, width, height, { focusMask })
+  // Filled dark details (eyes/nose/mouth) — drawn solid, like real inked pages.
+  const darkMarks = detectDarkMarks(luminance, width, height, { focusMask })
+
   const strokes = [
     dilateDisc(silhouette, width, height, SILHOUETTE_DILATE),
-    dilateDisc(interior, width, height, INTERIOR_DILATE),
-    dilateDisc(background, width, height, BACKGROUND_DILATE),
+    dilateDisc(features, width, height, FEATURE_DILATE),
+    dilateDisc(regionLines, width, height, REGION_LINE_DILATE),
+    darkMarks,
   ]
 
   const out = new Uint8ClampedArray(size * 4)
   for (let i = 0; i < size; i++) {
-    if (strokes[0][i] || strokes[1][i] || strokes[2][i]) {
+    if (strokes[0][i] || strokes[1][i] || strokes[2][i] || strokes[3][i]) {
       const o = i * 4
       out[o] = INK[0]
       out[o + 1] = INK[1]

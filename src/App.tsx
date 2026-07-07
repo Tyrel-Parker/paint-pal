@@ -2,22 +2,25 @@ import { useEffect, useMemo, useState } from 'react'
 import { fetchBuiltinPuzzles } from './lib/manifest'
 import { deleteProgress, deleteUserPuzzle, getUserPuzzles } from './lib/storage'
 import { groupPuzzlesByImage, type PuzzleGroup } from './lib/puzzleGroups'
-import type { Puzzle } from './types/puzzle'
+import type { FinishedWork, Puzzle } from './types/puzzle'
 import Gallery from './components/Gallery'
-import PuzzlePicker from './components/PuzzlePicker'
+import PuzzlePicker, { type PickerStep } from './components/PuzzlePicker'
 import PuzzleScreen from './components/PuzzleScreen'
 import FreePaintScreen from './components/FreePaintScreen'
 import FinishedGallery from './components/FinishedGallery'
 import AddPhotoScreen from './components/AddPhotoScreen'
+import ArtworkViewer from './components/ArtworkViewer'
 import './App.css'
 
 type Screen =
   | { screen: 'gallery' }
-  | { screen: 'picker'; groupKey: string }
+  | { screen: 'picker'; groupKey: string; step?: PickerStep }
   | { screen: 'puzzle'; puzzleId: string }
   | { screen: 'freepaint'; groupKey: string }
   | { screen: 'finished' }
   | { screen: 'addphoto'; file: File }
+  /** Full-size display of one finished piece; 'celebrate' is the post-finish linger. */
+  | { screen: 'artwork'; work: FinishedWork; from: 'celebrate' | 'finished' }
 
 const DIFFICULTY_SUFFIX = /-(easy|medium|hard)$/
 
@@ -77,7 +80,9 @@ function App() {
     if (!group) return renderGallery()
     return (
       <PuzzlePicker
+        key={`${group.key}:${screen.step ?? 'mode'}`}
         group={group}
+        initialStep={screen.step}
         onStartNumbers={(puzzleId) => setScreen({ screen: 'puzzle', puzzleId })}
         onStartFree={(groupKey) => setScreen({ screen: 'freepaint', groupKey })}
         onExit={goToGallery}
@@ -88,17 +93,54 @@ function App() {
   if (screen.screen === 'puzzle') {
     const puzzle = puzzles.find((p) => p.id === screen.puzzleId)
     if (!puzzle) return renderGallery()
-    return <PuzzleScreen puzzle={puzzle} onExit={goToGallery} onFinished={() => setScreen({ screen: 'finished' })} />
+    const groupKey = puzzle.id.replace(DIFFICULTY_SUFFIX, '')
+    return (
+      <PuzzleScreen
+        puzzle={puzzle}
+        baseCrumbs={[
+          { label: '🏠 Gallery', onTap: goToGallery },
+          { label: puzzle.name, onTap: () => setScreen({ screen: 'picker', groupKey }) },
+          { label: '🔢', onTap: () => setScreen({ screen: 'picker', groupKey, step: 'difficulty' }) },
+        ]}
+        onFinished={(work) => setScreen({ screen: 'artwork', work, from: 'celebrate' })}
+      />
+    )
   }
 
   if (screen.screen === 'freepaint') {
     const group = groups.find((g) => g.key === screen.groupKey)
     if (!group) return renderGallery()
-    return <FreePaintScreen group={group} onExit={goToGallery} onFinished={() => setScreen({ screen: 'finished' })} />
+    return (
+      <FreePaintScreen
+        group={group}
+        baseCrumbs={[
+          { label: '🏠 Gallery', onTap: goToGallery },
+          { label: group.name, onTap: () => setScreen({ screen: 'picker', groupKey: group.key }) },
+        ]}
+        onFinished={(work) => setScreen({ screen: 'artwork', work, from: 'celebrate' })}
+      />
+    )
   }
 
   if (screen.screen === 'finished') {
-    return <FinishedGallery onExit={goToGallery} />
+    return (
+      <FinishedGallery
+        onExit={goToGallery}
+        onSelectWork={(work) => setScreen({ screen: 'artwork', work, from: 'finished' })}
+      />
+    )
+  }
+
+  if (screen.screen === 'artwork') {
+    const crumbs =
+      screen.from === 'finished'
+        ? [
+            { label: '🏠 Gallery', onTap: goToGallery },
+            { label: '🖼️ Finished', onTap: () => setScreen({ screen: 'finished' }) },
+            { label: screen.work.puzzleName },
+          ]
+        : [{ label: '🏠 Gallery', onTap: goToGallery }, { label: screen.work.puzzleName }]
+    return <ArtworkViewer work={screen.work} crumbs={crumbs} celebrate={screen.from === 'celebrate'} />
   }
 
   return renderGallery()

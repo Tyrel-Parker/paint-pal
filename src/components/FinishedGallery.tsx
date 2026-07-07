@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import type { FinishedWork } from '../types/puzzle'
 import { getFinishedWorks } from '../lib/storage'
+import Breadcrumbs from './Breadcrumbs'
 
 interface FinishedGalleryProps {
   onExit: () => void
+  onSelectWork: (work: FinishedWork) => void
 }
 
-export default function FinishedGallery({ onExit }: FinishedGalleryProps) {
+export default function FinishedGallery({ onExit, onSelectWork }: FinishedGalleryProps) {
   const [works, setWorks] = useState<FinishedWork[] | null>(null)
 
   useEffect(() => {
@@ -16,10 +18,7 @@ export default function FinishedGallery({ onExit }: FinishedGalleryProps) {
   return (
     <main className="gallery">
       <div className="puzzle-header">
-        <button className="back-button" onClick={onExit}>
-          ← Back
-        </button>
-        <h2>Finished Pieces</h2>
+        <Breadcrumbs crumbs={[{ label: '🏠 Gallery', onTap: onExit }, { label: '🖼️ Finished' }]} />
         <div className="puzzle-header-actions" />
       </div>
       {works === null ? (
@@ -30,9 +29,11 @@ export default function FinishedGallery({ onExit }: FinishedGalleryProps) {
         <ul className="puzzle-grid">
           {works.map((work) => (
             <li key={work.key}>
-              <img src={work.image} alt={work.puzzleName} />
-              <p>{work.puzzleName}</p>
-              <span className="difficulty-badge">{new Date(work.completedAt).toLocaleDateString()}</span>
+              <button className="puzzle-card" onClick={() => onSelectWork(work)}>
+                <img src={work.image} alt={work.puzzleName} />
+                <p>{work.puzzleName}</p>
+                <span className="difficulty-badge">{new Date(work.completedAt).toLocaleDateString()}</span>
+              </button>
             </li>
           ))}
         </ul>

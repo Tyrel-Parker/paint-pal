@@ -35,9 +35,12 @@ Node (build-time preprocess via `tsx`) and the browser (user photos):
    components, then merging: small regions into their nearest-colored
    neighbor, background regions aggressively (plus a similarity pass that
    collapses gradient banding in skies/snow/bokeh).
-4. The **Free Paint outline** is the same segmentation at fixed coarse
-   settings, rendered as line art: bold subject silhouette, thinner interior
-   features, near-empty background — every line closes into a shape.
+4. The **Free Paint outline** composes three line sources like a real
+   coloring page: a bold closed silhouette (from a coarse segmentation),
+   filled dark details (eyes/noses/mouths via adaptive local-contrast
+   thresholding — inked solid, the way illustrators draw them), and
+   Canny-style structural edges inside the subject. High-contrast region
+   boundaries add a few interior lines; the background stays near-empty.
 
 Difficulty scales resolution, color count, smoothing strength, and minimum
 region size together:

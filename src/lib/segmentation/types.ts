@@ -12,6 +12,8 @@ export interface SegmentationOptions {
   backgroundSimilarityDeltaE?: number
   /** Bilateral pre-smoothing strength; defaults to the medium tier's values. */
   smoothing?: SmoothingParams
+  /** Precomputed smoothLab() output for these pixels; skips the internal smoothing pass when the caller already has one. */
+  smoothedLab?: Float32Array
   /** Mode-filter radius for boundary cleanup (0 disables). */
   modeFilterRadius?: number
   /** Extra k-means weight multiplier at full foreground confidence (1 = no boost). */

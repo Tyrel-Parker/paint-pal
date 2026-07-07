@@ -56,8 +56,7 @@ export function segmentImage(
 
   // 1. Perceptual color space + edge-preserving smoothing: flatten texture and
   //    lighting gradients so everything downstream follows object structure.
-  const lab = rgbaToLab(pixels, size)
-  const smoothed = smoothLab(lab, width, height, smoothing)
+  const smoothed = options.smoothedLab ?? smoothLab(rgbaToLab(pixels, size), width, height, smoothing)
 
   // 2. Palette via weighted k-means: subject pixels count more, so palette
   //    diversity goes to the subject instead of sky/grass.

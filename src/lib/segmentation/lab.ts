@@ -80,6 +80,18 @@ export function labToHex(L: number, a: number, b: number, chromaBoost = 1): stri
   return `#${channel(r)}${channel(g)}${channel(bb)}`
 }
 
+/** #rrggbb -> [L, a, b]. */
+export function hexToLab(hex: string): [number, number, number] {
+  const pixel = new Uint8ClampedArray([
+    parseInt(hex.slice(1, 3), 16),
+    parseInt(hex.slice(3, 5), 16),
+    parseInt(hex.slice(5, 7), 16),
+    255,
+  ])
+  const lab = rgbaToLab(pixel, 1)
+  return [lab[0], lab[1], lab[2]]
+}
+
 /** Squared Lab distance between palette entries i and j of a packed centroid array. */
 export function labDistSq(labArr: Float32Array, i: number, j: number): number {
   const a = i * 3

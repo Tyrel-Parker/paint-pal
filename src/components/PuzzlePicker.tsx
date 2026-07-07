@@ -1,9 +1,13 @@
 import { useState } from 'react'
 import type { Difficulty } from '../types/puzzle'
 import type { PuzzleGroup } from '../lib/puzzleGroups'
+import Breadcrumbs from './Breadcrumbs'
+
+export type PickerStep = 'mode' | 'difficulty'
 
 interface PuzzlePickerProps {
   group: PuzzleGroup
+  initialStep?: PickerStep
   onStartNumbers: (puzzleId: string) => void
   onStartFree: (groupKey: string) => void
   onExit: () => void
@@ -16,20 +20,29 @@ function capitalize(s: string) {
   return s[0].toUpperCase() + s.slice(1)
 }
 
-export default function PuzzlePicker({ group, onStartNumbers, onStartFree, onExit }: PuzzlePickerProps) {
-  const [step, setStep] = useState<'mode' | 'difficulty'>('mode')
+export default function PuzzlePicker({
+  group,
+  initialStep = 'mode',
+  onStartNumbers,
+  onStartFree,
+  onExit,
+}: PuzzlePickerProps) {
+  const [step, setStep] = useState<PickerStep>(initialStep)
 
   const availableDifficulties = DIFFICULTIES.filter((d) => group.variants[d])
 
+  const crumbs =
+    step === 'mode'
+      ? [{ label: '🏠 Gallery', onTap: onExit }, { label: group.name }]
+      : [
+          { label: '🏠 Gallery', onTap: onExit },
+          { label: group.name, onTap: () => setStep('mode') },
+          { label: '🔢 Numbers' },
+        ]
+
   return (
     <main className="puzzle-screen">
-      <div className="puzzle-header">
-        <button className="back-button" onClick={step === 'difficulty' ? () => setStep('mode') : onExit}>
-          ← Back
-        </button>
-        <h2>{group.name}</h2>
-        <div className="puzzle-header-actions" />
-      </div>
+      <Breadcrumbs crumbs={crumbs} />
 
       <img className="picker-preview" src={group.thumbnail} alt={group.name} />
 

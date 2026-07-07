@@ -1,21 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Palette, Progress, Puzzle } from '../types/puzzle'
+import type { FinishedWork, Palette, Progress, Puzzle } from '../types/puzzle'
 import { deleteProgress, getProgress, saveFinishedWork, saveProgress } from '../lib/storage'
 import { matchFillNumbers } from '../lib/fillRules'
 import PuzzleCanvas, { type PuzzleCanvasHandle } from './PuzzleCanvas'
 import PaletteEditor from './PaletteEditor'
+import Breadcrumbs, { type Crumb } from './Breadcrumbs'
 
 interface PuzzleScreenProps {
   puzzle: Puzzle
-  onExit: () => void
-  onFinished: () => void
+  /** Path back up (Gallery / picture / mode); this screen appends the difficulty. */
+  baseCrumbs: Crumb[]
+  onFinished: (work: FinishedWork) => void
 }
 
 type Phase = 'palette-editor' | 'painting'
 
 const MODE = 'numbers' as const
 
-export default function PuzzleScreen({ puzzle, onExit, onFinished }: PuzzleScreenProps) {
+function capitalize(s: string) {
+  return s[0].toUpperCase() + s.slice(1)
+}
+
+export default function PuzzleScreen({ puzzle, baseCrumbs, onFinished }: PuzzleScreenProps) {
   const [status, setStatus] = useState<'loading' | 'ready'>('loading')
   const [phase, setPhase] = useState<Phase>('palette-editor')
   const [filledRegions, setFilledRegions] = useState<Record<number, string>>({})
@@ -78,15 +84,16 @@ export default function PuzzleScreen({ puzzle, onExit, onFinished }: PuzzleScree
   async function handleFinish() {
     const image = canvasRef.current?.captureSnapshot()
     if (!image) return
-    await saveFinishedWork({
+    const work: FinishedWork = {
       key: `${puzzle.id}:${MODE}:${Date.now()}`,
       puzzleId: puzzle.id,
       mode: MODE,
       puzzleName: puzzle.name,
       completedAt: Date.now(),
       image,
-    })
-    onFinished()
+    }
+    await saveFinishedWork(work)
+    onFinished(work)
   }
 
   async function handleClear() {
@@ -105,12 +112,12 @@ export default function PuzzleScreen({ puzzle, onExit, onFinished }: PuzzleScree
     return <p className="loading">Loading...</p>
   }
 
+  const crumbs = [...baseCrumbs, { label: capitalize(puzzle.difficulty) }]
+
   if (phase === 'palette-editor') {
     return (
       <main className="puzzle-screen">
-        <button className="back-button" onClick={onExit}>
-          ← Back
-        </button>
+        <Breadcrumbs crumbs={crumbs} />
         <PaletteEditor palette={palette} onChange={setCustomPalette} onDone={handlePaletteDone} />
       </main>
     )
@@ -123,10 +130,7 @@ export default function PuzzleScreen({ puzzle, onExit, onFinished }: PuzzleScree
   return (
     <main className="puzzle-screen">
       <div className="puzzle-header">
-        <button className="back-button" onClick={onExit}>
-          ← Back
-        </button>
-        <h2>{puzzle.name}</h2>
+        <Breadcrumbs crumbs={crumbs} />
         <div className="puzzle-header-actions">
           <button onClick={() => setPhase('palette-editor')} aria-label="Edit colors">
             🎨

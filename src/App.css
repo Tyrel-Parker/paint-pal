@@ -41,6 +41,60 @@
   white-space: nowrap;
 }
 
+.breadcrumbs {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.breadcrumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  white-space: nowrap;
+}
+
+.breadcrumb-sep {
+  color: #999;
+  padding: 0 0.1rem;
+}
+
+.breadcrumb-link {
+  background: none;
+  border: none;
+  padding: 0.35em 0.3em;
+  font-size: 1rem;
+  color: #4363d8;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.breadcrumb-current {
+  padding: 0.35em 0.3em;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.artwork-viewer img {
+  display: block;
+  width: 100%;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.celebrate-banner {
+  text-align: center;
+  margin: 0;
+}
+
+.artwork-caption {
+  text-align: center;
+  margin: 0;
+}
+
 .puzzle-grid {
   list-style: none;
   display: grid;
