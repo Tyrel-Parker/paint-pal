@@ -85,6 +85,7 @@ function App() {
         initialStep={screen.step}
         onStartNumbers={(puzzleId) => setScreen({ screen: 'puzzle', puzzleId })}
         onStartFree={(groupKey) => setScreen({ screen: 'freepaint', groupKey })}
+        onShowFinished={() => setScreen({ screen: 'finished' })}
         onExit={goToGallery}
       />
     )
@@ -98,10 +99,14 @@ function App() {
       <PuzzleScreen
         puzzle={puzzle}
         baseCrumbs={[
-          { label: '🏠 Gallery', onTap: goToGallery },
+          { label: '🏠', onTap: goToGallery },
           { label: puzzle.name, onTap: () => setScreen({ screen: 'picker', groupKey }) },
-          { label: '🔢', onTap: () => setScreen({ screen: 'picker', groupKey, step: 'difficulty' }) },
+          {
+            label: 'Paint by Number',
+            onTap: () => setScreen({ screen: 'picker', groupKey, step: 'difficulty' }),
+          },
         ]}
+        onShowFinished={() => setScreen({ screen: 'finished' })}
         onFinished={(work) => setScreen({ screen: 'artwork', work, from: 'celebrate' })}
       />
     )
@@ -114,9 +119,10 @@ function App() {
       <FreePaintScreen
         group={group}
         baseCrumbs={[
-          { label: '🏠 Gallery', onTap: goToGallery },
+          { label: '🏠', onTap: goToGallery },
           { label: group.name, onTap: () => setScreen({ screen: 'picker', groupKey: group.key }) },
         ]}
+        onShowFinished={() => setScreen({ screen: 'finished' })}
         onFinished={(work) => setScreen({ screen: 'artwork', work, from: 'celebrate' })}
       />
     )
@@ -132,15 +138,17 @@ function App() {
   }
 
   if (screen.screen === 'artwork') {
-    const crumbs =
-      screen.from === 'finished'
-        ? [
-            { label: '🏠 Gallery', onTap: goToGallery },
-            { label: '🖼️ Finished', onTap: () => setScreen({ screen: 'finished' }) },
-            { label: screen.work.puzzleName },
-          ]
-        : [{ label: '🏠 Gallery', onTap: goToGallery }, { label: screen.work.puzzleName }]
-    return <ArtworkViewer work={screen.work} crumbs={crumbs} celebrate={screen.from === 'celebrate'} />
+    return (
+      <ArtworkViewer
+        work={screen.work}
+        crumbs={[
+          { label: '🏠', onTap: goToGallery },
+          { label: '🖼️ Finished', onTap: () => setScreen({ screen: 'finished' }) },
+          { label: screen.work.puzzleName },
+        ]}
+        celebrate={screen.from === 'celebrate'}
+      />
+    )
   }
 
   return renderGallery()

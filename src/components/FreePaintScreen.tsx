@@ -11,10 +11,11 @@ interface FreePaintScreenProps {
   group: PuzzleGroup
   /** Path back up (Gallery / picture); this screen appends "Free Paint". */
   baseCrumbs: Crumb[]
+  onShowFinished: () => void
   onFinished: (work: FinishedWork) => void
 }
 
-export default function FreePaintScreen({ group, baseCrumbs, onFinished }: FreePaintScreenProps) {
+export default function FreePaintScreen({ group, baseCrumbs, onShowFinished, onFinished }: FreePaintScreenProps) {
   const [status, setStatus] = useState<'loading' | 'ready'>('loading')
   const [paintedImage, setPaintedImage] = useState<string | undefined>(undefined)
   const [color, setColor] = useState(PRESET_COLORS[0])
@@ -66,6 +67,9 @@ export default function FreePaintScreen({ group, baseCrumbs, onFinished }: FreeP
       image,
     }
     await saveFinishedWork(work)
+    // Finished pieces live in the finished gallery; the canvas resets so
+    // coming back starts a fresh page.
+    await deleteProgress(group.key, 'free')
     onFinished(work)
   }
 
@@ -80,6 +84,9 @@ export default function FreePaintScreen({ group, baseCrumbs, onFinished }: FreeP
         <div className="puzzle-header-actions">
           <button onClick={handleClear} aria-label="Clear and start over">
             🔄
+          </button>
+          <button onClick={onShowFinished} aria-label="Finished gallery">
+            🖼️
           </button>
         </div>
       </div>

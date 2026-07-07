@@ -10,6 +10,7 @@ interface PuzzlePickerProps {
   initialStep?: PickerStep
   onStartNumbers: (puzzleId: string) => void
   onStartFree: (groupKey: string) => void
+  onShowFinished: () => void
   onExit: () => void
 }
 
@@ -25,6 +26,7 @@ export default function PuzzlePicker({
   initialStep = 'mode',
   onStartNumbers,
   onStartFree,
+  onShowFinished,
   onExit,
 }: PuzzlePickerProps) {
   const [step, setStep] = useState<PickerStep>(initialStep)
@@ -33,16 +35,23 @@ export default function PuzzlePicker({
 
   const crumbs =
     step === 'mode'
-      ? [{ label: '🏠 Gallery', onTap: onExit }, { label: group.name }]
+      ? [{ label: '🏠', onTap: onExit }, { label: group.name }]
       : [
-          { label: '🏠 Gallery', onTap: onExit },
+          { label: '🏠', onTap: onExit },
           { label: group.name, onTap: () => setStep('mode') },
-          { label: '🔢 Numbers' },
+          { label: 'Paint by Number' },
         ]
 
   return (
     <main className="puzzle-screen">
-      <Breadcrumbs crumbs={crumbs} />
+      <div className="puzzle-header">
+        <Breadcrumbs crumbs={crumbs} />
+        <div className="puzzle-header-actions">
+          <button onClick={onShowFinished} aria-label="Finished gallery">
+            🖼️
+          </button>
+        </div>
+      </div>
 
       <img className="picker-preview" src={group.thumbnail} alt={group.name} />
 

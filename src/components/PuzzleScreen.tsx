@@ -10,6 +10,7 @@ interface PuzzleScreenProps {
   puzzle: Puzzle
   /** Path back up (Gallery / picture / mode); this screen appends the difficulty. */
   baseCrumbs: Crumb[]
+  onShowFinished: () => void
   onFinished: (work: FinishedWork) => void
 }
 
@@ -21,7 +22,7 @@ function capitalize(s: string) {
   return s[0].toUpperCase() + s.slice(1)
 }
 
-export default function PuzzleScreen({ puzzle, baseCrumbs, onFinished }: PuzzleScreenProps) {
+export default function PuzzleScreen({ puzzle, baseCrumbs, onShowFinished, onFinished }: PuzzleScreenProps) {
   const [status, setStatus] = useState<'loading' | 'ready'>('loading')
   const [phase, setPhase] = useState<Phase>('palette-editor')
   const [filledRegions, setFilledRegions] = useState<Record<number, string>>({})
@@ -93,6 +94,9 @@ export default function PuzzleScreen({ puzzle, baseCrumbs, onFinished }: PuzzleS
       image,
     }
     await saveFinishedWork(work)
+    // Finished pieces live in the finished gallery; the puzzle itself resets
+    // so coming back to it starts a fresh page.
+    await deleteProgress(puzzle.id, MODE)
     onFinished(work)
   }
 
@@ -137,6 +141,9 @@ export default function PuzzleScreen({ puzzle, baseCrumbs, onFinished }: PuzzleS
           </button>
           <button onClick={handleClear} aria-label="Clear and start over">
             🔄
+          </button>
+          <button onClick={onShowFinished} aria-label="Finished gallery">
+            🖼️
           </button>
         </div>
       </div>

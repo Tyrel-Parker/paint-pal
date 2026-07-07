@@ -55,6 +55,17 @@ export default function AddPhotoScreen({ file, onSaved, onCancel }: AddPhotoScre
       onSaved(puzzles)
     } catch (e) {
       console.error(e)
+      // A failed dynamic import means this page is a stale deploy whose lazy
+      // chunk no longer exists on the server — reloading picks up the current
+      // version. Guarded so a genuinely broken deploy can't reload-loop.
+      const staleChunk = /dynamically imported module|Failed to fetch|Importing a module script failed/i.test(
+        String(e),
+      )
+      if (staleChunk && !sessionStorage.getItem('paint-pal-reloaded-for-update')) {
+        sessionStorage.setItem('paint-pal-reloaded-for-update', '1')
+        window.location.reload()
+        return
+      }
       setError('Something went wrong while preparing your photo. Please try again.')
       setStage(null)
     }
@@ -67,7 +78,7 @@ export default function AddPhotoScreen({ file, onSaved, onCancel }: AddPhotoScre
       <div className="puzzle-header">
         <Breadcrumbs
           crumbs={[
-            { label: '🏠 Gallery', onTap: processing ? undefined : onCancel },
+            { label: '🏠', onTap: processing ? undefined : onCancel },
             { label: '＋ Add photo' },
           ]}
         />

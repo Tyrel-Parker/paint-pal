@@ -18,7 +18,7 @@ export default function FinishedGallery({ onExit, onSelectWork }: FinishedGaller
   return (
     <main className="gallery">
       <div className="puzzle-header">
-        <Breadcrumbs crumbs={[{ label: '🏠 Gallery', onTap: onExit }, { label: '🖼️ Finished' }]} />
+        <Breadcrumbs crumbs={[{ label: '🏠', onTap: onExit }, { label: '🖼️ Finished' }]} />
         <div className="puzzle-header-actions" />
       </div>
       {works === null ? (
