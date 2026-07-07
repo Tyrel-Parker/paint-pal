@@ -45,7 +45,9 @@ interface SubjectMask {
 
 /** Foreground confidence mask at the photo's native resolution; resize per use with resizeMaskNearest. */
 async function acquireSubjectMask(inputPath: string): Promise<SubjectMask> {
-  const blob = await segmentForeground(inputPath, { model: 'small', output: { format: 'image/png' } })
+  // 'medium' is noticeably better at complex silhouettes (castle spires, legs)
+  // than 'small', and build time doesn't care about the extra model weight.
+  const blob = await segmentForeground(inputPath, { model: 'medium', output: { format: 'image/png' } })
   const buf = Buffer.from(await blob.arrayBuffer())
   const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
 

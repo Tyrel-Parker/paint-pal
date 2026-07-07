@@ -16,10 +16,16 @@ import { segmentImage, decodeLabelMap, OUTLINE_PARAMS, effectiveMinArea } from '
 import { rgbaToLab, hexToLab } from './segmentation/lab'
 import { smoothLab } from './segmentation/bilateral'
 import { detectFeatureLines, detectDarkMarks } from './segmentation/edges'
+import { traceContours, simplifyLoop, chaikinLoop, strokeLoop } from './segmentation/contour'
 
 const INK = [31, 31, 31] as const
 
-const SILHOUETTE_DILATE = 2 // ~6px stroke after the 2px base boundary
+const SILHOUETTE_BRUSH_RADIUS = 3
+/** DP tolerance: wobble below this many pixels becomes a straight stroke. */
+const SILHOUETTE_SIMPLIFY_EPSILON = 2.2
+const SILHOUETTE_SMOOTH_ROUNDS = 2
+/** Subject blobs / holes smaller than this aren't worth a silhouette loop. */
+const SILHOUETTE_MIN_COMPONENT_AREA = 200
 const FEATURE_DILATE = 1 // ~3px
 const REGION_LINE_DILATE = 0 // 2px base only
 /** Region boundaries survive only if the two sides' palette colors differ by at least this ΔE. */
@@ -118,7 +124,19 @@ export function generateOutline(
     }
   }
 
+  // Silhouette: traced from the *raw* subject mask (not the segmentation
+  // regions — mode filtering erodes thin structures like spires and ears)
+  // and redrawn as simplified brush strokes — a drawn line, not a pixel trace.
   const silhouette = new Uint8Array(size)
+  if (subjectMask) {
+    const subjectPixels = new Uint8Array(size)
+    for (let i = 0; i < size; i++) subjectPixels[i] = subjectMask[i] > 128 ? 1 : 0
+    for (const loop of traceContours(subjectPixels, width, height, SILHOUETTE_MIN_COMPONENT_AREA)) {
+      const smoothed = chaikinLoop(simplifyLoop(loop, SILHOUETTE_SIMPLIFY_EPSILON), SILHOUETTE_SMOOTH_ROUNDS)
+      strokeLoop(silhouette, width, height, smoothed, SILHOUETTE_BRUSH_RADIUS)
+    }
+  }
+
   const regionLines = new Uint8Array(size)
   const minDeltaESq = REGION_LINE_MIN_DELTA_E * REGION_LINE_MIN_DELTA_E
 
@@ -126,10 +144,8 @@ export function generateOutline(
     const a = labels[i]
     const b = labels[j]
     if (a === b) return
-    if (isSubjectRegion && isSubjectRegion[a] !== isSubjectRegion[b]) {
-      silhouette[i] = silhouette[j] = 1
-      return
-    }
+    // Subject/background transitions are already covered by the traced silhouette.
+    if (isSubjectRegion && isSubjectRegion[a] !== isSubjectRegion[b]) return
     const dL = regionLab[a * 3] - regionLab[b * 3]
     const da = regionLab[a * 3 + 1] - regionLab[b * 3 + 1]
     const db = regionLab[a * 3 + 2] - regionLab[b * 3 + 2]
@@ -169,7 +185,7 @@ export function generateOutline(
   const darkMarks = detectDarkMarks(luminance, width, height, { focusMask })
 
   const strokes = [
-    dilateDisc(silhouette, width, height, SILHOUETTE_DILATE),
+    silhouette,
     dilateDisc(features, width, height, FEATURE_DILATE),
     dilateDisc(regionLines, width, height, REGION_LINE_DILATE),
     darkMarks,

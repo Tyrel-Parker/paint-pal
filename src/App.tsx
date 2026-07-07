@@ -72,7 +72,7 @@ function App() {
   }
 
   if (screen.screen === 'addphoto') {
-    return <AddPhotoScreen file={screen.file} onSaved={handlePhotoSaved} onCancel={goToGallery} />
+    return <AddPhotoScreen initialFile={screen.file} onSaved={handlePhotoSaved} onCancel={goToGallery} />
   }
 
   if (screen.screen === 'picker') {

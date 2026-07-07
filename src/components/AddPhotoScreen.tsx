@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Puzzle } from '../types/puzzle'
 import { processPhotoAll, type ProcessStage } from '../lib/processPhoto'
 import { saveUserPuzzle } from '../lib/storage'
 import Breadcrumbs from './Breadcrumbs'
 
 interface AddPhotoScreenProps {
-  file: File
+  /** The photo picked from the gallery; the user can swap it here without leaving. */
+  initialFile: File
   onSaved: (puzzles: Puzzle[]) => void
   onCancel: () => void
 }
@@ -30,10 +31,12 @@ function defaultName(fileName: string): string {
     .join(' ')
 }
 
-export default function AddPhotoScreen({ file, onSaved, onCancel }: AddPhotoScreenProps) {
-  const [name, setName] = useState(() => defaultName(file.name))
+export default function AddPhotoScreen({ initialFile, onSaved, onCancel }: AddPhotoScreenProps) {
+  const [file, setFile] = useState(initialFile)
+  const [name, setName] = useState(() => defaultName(initialFile.name))
   const [stage, setStage] = useState<ProcessStage | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const repickInputRef = useRef<HTMLInputElement>(null)
 
   // Created inside the effect (not useMemo) so StrictMode's mount→unmount→mount
   // cycle gets a fresh URL after the cleanup revokes the first one.
@@ -43,6 +46,16 @@ export default function AddPhotoScreen({ file, onSaved, onCancel }: AddPhotoScre
     setPreviewUrl(url)
     return () => URL.revokeObjectURL(url)
   }, [file])
+
+  function handleRepick(e: React.ChangeEvent<HTMLInputElement>) {
+    const next = e.target.files?.[0]
+    if (next) {
+      setFile(next)
+      setName(defaultName(next.name))
+      setError(null)
+    }
+    e.target.value = ''
+  }
 
   const processing = stage !== null && error === null
 
@@ -98,6 +111,10 @@ export default function AddPhotoScreen({ file, onSaved, onCancel }: AddPhotoScre
         </ol>
       ) : (
         <div className="picker-options">
+          <input ref={repickInputRef} type="file" accept="image/*" hidden onChange={handleRepick} />
+          <button className="repick-button" onClick={() => repickInputRef.current?.click()}>
+            📷 Pick a different photo
+          </button>
           <label className="add-photo-name">
             Name
             <input
