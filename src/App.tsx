@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { fetchBuiltinPuzzles } from './lib/manifest'
-import { getUserPuzzles } from './lib/storage'
-import { groupPuzzlesByImage } from './lib/puzzleGroups'
+import { deleteProgress, deleteUserPuzzle, getUserPuzzles } from './lib/storage'
+import { groupPuzzlesByImage, type PuzzleGroup } from './lib/puzzleGroups'
 import type { Puzzle } from './types/puzzle'
 import Gallery from './components/Gallery'
 import PuzzlePicker from './components/PuzzlePicker'
 import PuzzleScreen from './components/PuzzleScreen'
 import FreePaintScreen from './components/FreePaintScreen'
 import FinishedGallery from './components/FinishedGallery'
+import AddPhotoScreen from './components/AddPhotoScreen'
 import './App.css'
 
 type Screen =
@@ -16,6 +17,9 @@ type Screen =
   | { screen: 'puzzle'; puzzleId: string }
   | { screen: 'freepaint'; groupKey: string }
   | { screen: 'finished' }
+  | { screen: 'addphoto'; file: File }
+
+const DIFFICULTY_SUFFIX = /-(easy|medium|hard)$/
 
 function App() {
   const [puzzles, setPuzzles] = useState<Puzzle[]>([])
@@ -35,6 +39,22 @@ function App() {
     setScreen({ screen: 'gallery' })
   }
 
+  async function handleDeleteGroup(group: PuzzleGroup) {
+    const variants = Object.values(group.variants)
+    for (const variant of variants) {
+      await deleteUserPuzzle(variant.id)
+      await deleteProgress(variant.id, 'numbers')
+    }
+    await deleteProgress(group.key, 'free')
+    const removed = new Set(variants.map((v) => v.id))
+    setPuzzles((prev) => prev.filter((p) => !removed.has(p.id)))
+  }
+
+  function handlePhotoSaved(newPuzzles: Puzzle[]) {
+    setPuzzles((prev) => [...prev, ...newPuzzles])
+    setScreen({ screen: 'picker', groupKey: newPuzzles[0].id.replace(DIFFICULTY_SUFFIX, '') })
+  }
+
   function renderGallery() {
     return (
       <Gallery
@@ -42,8 +62,14 @@ function App() {
         loading={loading}
         onSelectImage={(groupKey) => setScreen({ screen: 'picker', groupKey })}
         onShowFinished={() => setScreen({ screen: 'finished' })}
+        onAddPhoto={(file) => setScreen({ screen: 'addphoto', file })}
+        onDeleteGroup={handleDeleteGroup}
       />
     )
+  }
+
+  if (screen.screen === 'addphoto') {
+    return <AddPhotoScreen file={screen.file} onSaved={handlePhotoSaved} onCancel={goToGallery} />
   }
 
   if (screen.screen === 'picker') {

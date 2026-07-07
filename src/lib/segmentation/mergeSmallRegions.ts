@@ -1,3 +1,5 @@
+import { labDistSq } from './lab'
+
 export interface MergeResult {
   /** Maps every original region id to its final (post-merge) region id. */
   finalRegionId: (originalId: number) => number
@@ -16,15 +18,37 @@ export interface MergeSmallRegionsOptions {
   backgroundMinAreaPx?: number
   /** 0-1 per *original* (pre-merge) region id. Roots are always original ids (see merge()), so this stays valid throughout merging without needing to be tracked/updated. */
   regionForegroundConfidence?: Map<number, number>
+  /**
+   * Packed [L,a,b,...] palette centroids, indexed by each region's colorIndex.
+   * When present, a too-small region merges into the neighbor with the
+   * *nearest palette color* (border length only breaks near-ties), so merges
+   * are visually invisible instead of snapping a dark shape into a light one
+   * just because they share a long border.
+   */
+  paletteLab?: Float32Array
+  /**
+   * When set (needs `paletteLab` + `regionForegroundConfidence`): after
+   * size-based merging, adjacent *background* regions whose palette colors
+   * are within this ΔE also merge, regardless of size. This collapses
+   * "isophote banding" — nested near-identical bands that quantization
+   * carves out of smooth gradients (snow shadows, bokeh, sky) — which
+   * survive size thresholds because each band is individually large.
+   */
+  backgroundSimilarityDeltaE?: number
 }
 
+/** ΔE band within which two candidate colors count as "equally close" and border length decides. */
+const NEAR_TIE_DELTA_E = 2.5
+
 /**
- * Merges regions smaller than `minAreaPx` into whichever neighbor shares the
- * longest border, via union-find. A region's neighbors are always a
- * different color by construction (same-color adjacent pixels were already
- * joined during connected-component labeling), so merging a tiny region
- * necessarily reassigns it to a neighboring color — that's the intended
- * coloring-book simplification.
+ * Merges regions smaller than `minAreaPx` into a neighbor, via union-find.
+ * With `paletteLab` set, the neighbor with the perceptually closest color
+ * wins (longest shared border breaks near-ties); otherwise falls back to
+ * longest-border. A region's neighbors are always a different color by
+ * construction (same-color adjacent pixels were already joined during
+ * connected-component labeling), so merging a tiny region necessarily
+ * reassigns it to a neighboring color — that's the intended coloring-book
+ * simplification.
  */
 export function mergeSmallRegions(
   areaByRegion: number[],
@@ -33,7 +57,7 @@ export function mergeSmallRegions(
   minAreaPx: number,
   options: MergeSmallRegionsOptions = {},
 ): MergeResult {
-  const { backgroundMinAreaPx, regionForegroundConfidence } = options
+  const { backgroundMinAreaPx, regionForegroundConfidence, paletteLab, backgroundSimilarityDeltaE } = options
   const regionCount = areaByRegion.length
   const parent = Int32Array.from({ length: regionCount }, (_, i) => i)
   const area = [...areaByRegion]
@@ -60,12 +84,19 @@ export function mergeSmallRegions(
     const neighbors = adjacency.get(root)
     if (!neighbors || neighbors.size === 0) return undefined
     let best: number | undefined
+    // Candidates are bucketed by color distance (NEAR_TIE_DELTA_E-wide bands);
+    // the lowest bucket wins, longest shared border decides within a bucket.
+    let bestBucket = Infinity
     let bestScore = -1
     for (const [neighbor, sharedBorder] of neighbors) {
       const neighborRoot = find(neighbor)
       if (neighborRoot === root) continue
+      const bucket = paletteLab
+        ? Math.floor(Math.sqrt(labDistSq(paletteLab, colorIndex[root], colorIndex[neighborRoot])) / NEAR_TIE_DELTA_E)
+        : 0
       const score = sharedBorder * 1e6 + area[neighborRoot] * 10 - neighborRoot
-      if (score > bestScore) {
+      if (bucket < bestBucket || (bucket === bestBucket && score > bestScore)) {
+        bestBucket = bucket
         bestScore = score
         best = neighborRoot
       }
@@ -112,6 +143,37 @@ export function mergeSmallRegions(
 
     merge(root, neighbor)
     if (area[neighbor] < effectiveMinArea(neighbor)) pending.add(neighbor)
+  }
+
+  // Background band collapse (see backgroundSimilarityDeltaE doc). Confidence
+  // is read off original root ids — good enough, since background roots stay
+  // background as they absorb other background roots.
+  if (backgroundSimilarityDeltaE && paletteLab && regionForegroundConfidence) {
+    const thresholdSq = backgroundSimilarityDeltaE * backgroundSimilarityDeltaE
+    const isBackground = (root: number) => (regionForegroundConfidence.get(root) ?? 0) < 0.5
+
+    let changed = true
+    while (changed) {
+      changed = false
+      for (const root of [...adjacency.keys()]) {
+        if (find(root) !== root || !isBackground(root)) continue
+        const neighbors = adjacency.get(root)
+        if (!neighbors) continue
+        for (const neighbor of [...neighbors.keys()]) {
+          const neighborRoot = find(neighbor)
+          if (neighborRoot === root || !isBackground(neighborRoot)) continue
+          if (labDistSq(paletteLab, colorIndex[root], colorIndex[neighborRoot]) >= thresholdSq) continue
+          // Merge the smaller into the larger so the surviving color is the dominant one.
+          if (area[root] >= area[neighborRoot]) {
+            merge(neighborRoot, root)
+          } else {
+            merge(root, neighborRoot)
+          }
+          changed = true
+          break
+        }
+      }
+    }
   }
 
   const areaByFinalRegion = new Map<number, number>()

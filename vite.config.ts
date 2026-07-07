@@ -10,6 +10,12 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        // The onnxruntime/background-removal chunks (incl. a ~24MB wasm) only load when
+        // someone uses "Add your photo" — keep them out of the install-time
+        // precache; the browser's HTTP cache handles them after first use.
+        globIgnores: ['**/ort*', '**/*.wasm', '**/*.onnx'],
+      },
       manifest: {
         name: 'PaintPal',
         short_name: 'PaintPal',

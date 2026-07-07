@@ -1,0 +1,108 @@
+import { useEffect, useState } from 'react'
+import type { Puzzle } from '../types/puzzle'
+import { processPhotoAll, type ProcessStage } from '../lib/processPhoto'
+import { saveUserPuzzle } from '../lib/storage'
+
+interface AddPhotoScreenProps {
+  file: File
+  onSaved: (puzzles: Puzzle[]) => void
+  onCancel: () => void
+}
+
+const STAGE_ORDER: ProcessStage[] = ['loading-model', 'finding-subject', 'outline', 'easy', 'medium', 'hard']
+
+const STAGE_LABEL: Record<ProcessStage, string> = {
+  'loading-model': 'Warming up the art robot (first time takes a bit)',
+  'finding-subject': 'Finding what to paint',
+  outline: 'Drawing the coloring-book outline',
+  easy: 'Building the Easy puzzle',
+  medium: 'Building the Medium puzzle',
+  hard: 'Building the Hard puzzle',
+}
+
+function defaultName(fileName: string): string {
+  const base = fileName.replace(/\.[^.]*$/, '').replace(/[-_]+/g, ' ').trim()
+  if (!base) return 'My Picture'
+  return base
+    .split(' ')
+    .map((word) => (word ? word[0].toUpperCase() + word.slice(1) : word))
+    .join(' ')
+}
+
+export default function AddPhotoScreen({ file, onSaved, onCancel }: AddPhotoScreenProps) {
+  const [name, setName] = useState(() => defaultName(file.name))
+  const [stage, setStage] = useState<ProcessStage | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  // Created inside the effect (not useMemo) so StrictMode's mount→unmount→mount
+  // cycle gets a fresh URL after the cleanup revokes the first one.
+  const [previewUrl, setPreviewUrl] = useState<string>()
+  useEffect(() => {
+    const url = URL.createObjectURL(file)
+    setPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file])
+
+  const processing = stage !== null && error === null
+
+  async function handleStart() {
+    setError(null)
+    setStage('loading-model')
+    try {
+      const puzzles = await processPhotoAll(file, `user-${Date.now()}`, name.trim() || 'My Picture', setStage)
+      for (const puzzle of puzzles) await saveUserPuzzle(puzzle)
+      onSaved(puzzles)
+    } catch (e) {
+      console.error(e)
+      setError('Something went wrong while preparing your photo. Please try again.')
+      setStage(null)
+    }
+  }
+
+  const stageIndex = stage ? STAGE_ORDER.indexOf(stage) : -1
+
+  return (
+    <main className="puzzle-screen">
+      <div className="puzzle-header">
+        <button className="back-button" onClick={onCancel} disabled={processing}>
+          ← Back
+        </button>
+        <h2>Add your photo</h2>
+        <div className="puzzle-header-actions" />
+      </div>
+
+      <img className="picker-preview" src={previewUrl} alt="Your photo" />
+
+      {processing ? (
+        <ol className="process-stage-list">
+          {STAGE_ORDER.map((s, i) => (
+            <li key={s} className={i < stageIndex ? 'done' : i === stageIndex ? 'active' : ''}>
+              {i < stageIndex ? '✅' : i === stageIndex ? '✨' : '· '} {STAGE_LABEL[s]}
+              {i === stageIndex ? '…' : ''}
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <div className="picker-options">
+          <label className="add-photo-name">
+            Name
+            <input
+              type="text"
+              value={name}
+              maxLength={40}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="My Picture"
+            />
+          </label>
+          {error && <p className="add-photo-error">{error}</p>}
+          <button className="primary-button" onClick={handleStart}>
+            🪄 Make it paintable
+          </button>
+          <p className="add-photo-hint">
+            Your photo is turned into puzzles right here on this device — it never leaves it.
+          </p>
+        </div>
+      )}
+    </main>
+  )
+}

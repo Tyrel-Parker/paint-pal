@@ -3,14 +3,13 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   segmentImage,
-  MAX_DIMENSION,
-  TARGET_COLOR_COUNT,
-  MERGE_THRESHOLD,
-  BACKGROUND_MERGE_THRESHOLD,
+  DIFFICULTY_PARAMS,
+  OUTLINE_PARAMS,
+  effectiveMinArea,
 } from '../src/lib/segmentation/index.js'
 import { generateOutline } from '../src/lib/outline.js'
 import { resizeMaskNearest } from '../src/lib/subjectMask.js'
-import { DIFFICULTY_COLOR_RANGE, type Difficulty, type Puzzle } from '../src/types/puzzle.js'
+import type { Difficulty, Puzzle } from '../src/types/puzzle.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const SOURCE_DIR = path.join(ROOT, 'source-images')
@@ -56,7 +55,7 @@ async function acquireSubjectMask(inputPath: string): Promise<SubjectMask> {
 }
 
 async function generateOutlineAsset(inputPath: string, slug: string, mask: SubjectMask) {
-  const maxDimension = MAX_DIMENSION.medium
+  const maxDimension = OUTLINE_PARAMS.maxDimension
   const { data, info } = await sharp(inputPath)
     .rotate()
     .resize(maxDimension, maxDimension, { fit: 'inside', withoutEnlargement: true })
@@ -91,36 +90,28 @@ async function processImage(fileName: string): Promise<Puzzle[]> {
 
   for (const difficulty of DIFFICULTIES) {
     const id = `${slug}-${difficulty}`
-    const maxDimension = MAX_DIMENSION[difficulty]
+    const params = DIFFICULTY_PARAMS[difficulty]
     const { data, info } = await sharp(inputPath)
       .rotate()
-      .resize(maxDimension, maxDimension, { fit: 'inside', withoutEnlargement: true })
+      .resize(params.maxDimension, params.maxDimension, { fit: 'inside', withoutEnlargement: true })
       .ensureAlpha()
       .raw()
       .toBuffer({ resolveWithObject: true })
 
     const pixels = new Uint8ClampedArray(data.buffer, data.byteOffset, data.length)
     const { width, height } = info
-    const colorCount = TARGET_COLOR_COUNT[difficulty]
-    const threshold = MERGE_THRESHOLD[difficulty]
-    const backgroundThreshold = BACKGROUND_MERGE_THRESHOLD[difficulty]
-    const minRegionAreaPx = Math.max(width * height * threshold.fraction, threshold.floorPx)
-    const backgroundMinRegionAreaPx = Math.max(width * height * backgroundThreshold.fraction, backgroundThreshold.floorPx)
     const subjectMask = resizeMaskNearest(mask.data, mask.width, mask.height, width, height)
 
-    const result = segmentImage(pixels, width, height, colorCount, {
-      minRegionAreaPx,
-      backgroundMinRegionAreaPx,
+    const result = segmentImage(pixels, width, height, params.colorCount, {
+      minRegionAreaPx: effectiveMinArea(params.minRegionArea, width, height),
+      backgroundMinRegionAreaPx: effectiveMinArea(params.backgroundMinRegionArea, width, height),
       subjectMask,
+      backgroundSimilarityDeltaE: params.backgroundSimilarityDeltaE,
+      smoothing: params.smoothing,
+      modeFilterRadius: params.modeFilterRadius,
     })
 
     const finalColorCount = Object.keys(result.palette).length
-    const [min, max] = DIFFICULTY_COLOR_RANGE[difficulty]
-    if (finalColorCount < min || finalColorCount > max) {
-      console.warn(
-        `  [warn] ${id}: ${finalColorCount} colors after merge (target range ${min}-${max})`,
-      )
-    }
 
     puzzles.push({
       id,

@@ -3,6 +3,7 @@ import type { Difficulty, Puzzle } from '../types/puzzle'
 export interface PuzzleGroup {
   key: string
   name: string
+  source: Puzzle['source']
   thumbnail: string
   outline: string
   outlineWidth: number
@@ -23,6 +24,7 @@ export function groupPuzzlesByImage(puzzles: Puzzle[]): PuzzleGroup[] {
       group = {
         key,
         name: puzzle.name,
+        source: puzzle.source,
         thumbnail: puzzle.thumbnail,
         outline: puzzle.outline,
         outlineWidth: puzzle.outlineWidth,

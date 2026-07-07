@@ -1,113 +1,132 @@
-/** Grayscale -> blur -> Sobel edges -> percentile threshold -> transparent-background line art. */
+/**
+ * Free Paint coloring-book outline, derived from a coarse segmentation
+ * instead of edge detection. Region boundaries are closed curves by
+ * construction, so every line encloses a fillable shape — the old
+ * Sobel-threshold approach produced broken speckles that never joined up.
+ *
+ * Line hierarchy, real-coloring-book style:
+ *   - subject silhouette: bold
+ *   - features inside the subject: medium
+ *   - background shape boundaries: thin (and few — OUTLINE_PARAMS collapses
+ *     the background to a handful of big regions)
+ */
 
-function toGrayscale(pixels: Uint8ClampedArray, size: number): Float32Array {
-  const gray = new Float32Array(size)
-  for (let i = 0; i < size; i++) {
-    const o = i * 4
-    gray[i] = 0.299 * pixels[o] + 0.587 * pixels[o + 1] + 0.114 * pixels[o + 2]
-  }
-  return gray
-}
+import { segmentImage, decodeLabelMap, OUTLINE_PARAMS, effectiveMinArea } from './segmentation'
 
-function boxBlur3x3(src: Float32Array, width: number, height: number): Float32Array {
-  const out = new Float32Array(src.length)
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      let sum = 0
-      let count = 0
-      for (let dy = -1; dy <= 1; dy++) {
-        const ny = y + dy
-        if (ny < 0 || ny >= height) continue
-        for (let dx = -1; dx <= 1; dx++) {
-          const nx = x + dx
-          if (nx < 0 || nx >= width) continue
-          sum += src[ny * width + nx]
-          count++
-        }
-      }
-      out[y * width + x] = sum / count
-    }
-  }
-  return out
-}
+const INK = [31, 31, 31] as const
 
-function sobelMagnitude(src: Float32Array, width: number, height: number): Float32Array {
-  const out = new Float32Array(src.length)
-  const at = (x: number, y: number) => {
-    const cx = x < 0 ? 0 : x >= width ? width - 1 : x
-    const cy = y < 0 ? 0 : y >= height ? height - 1 : y
-    return src[cy * width + cx]
-  }
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const gx =
-        -at(x - 1, y - 1) + at(x + 1, y - 1) +
-        -2 * at(x - 1, y) + 2 * at(x + 1, y) +
-        -at(x - 1, y + 1) + at(x + 1, y + 1)
-      const gy =
-        -at(x - 1, y - 1) - 2 * at(x, y - 1) - at(x + 1, y - 1) +
-        at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1)
-      out[y * width + x] = Math.sqrt(gx * gx + gy * gy)
-    }
-  }
-  return out
-}
-
-function percentileThreshold(magnitude: Float32Array, percentile: number): number {
-  const sorted = Float32Array.from(magnitude).sort()
-  const index = Math.min(sorted.length - 1, Math.floor(sorted.length * percentile))
-  return sorted[index]
-}
+const SILHOUETTE_DILATE = 2 // ~6px stroke after the 2px base boundary
+const INTERIOR_DILATE = 1 // ~4px
+const BACKGROUND_DILATE = 0 // 2px base only
 
 export interface GenerateOutlineOptions {
   /** Per-pixel foreground confidence (0-255), same width*height layout as `pixels`. */
   subjectMask?: Uint8Array
-  /** Percentile used where subjectMask (if any) says foreground: lower = more inclusive. */
-  foregroundPercentile?: number
-  /** Percentile used where subjectMask says background: higher = stricter, fewer lines. */
-  backgroundPercentile?: number
 }
 
-/**
- * Percentiles control line density: 0.9 means the strongest 10% of gradients
- * become edges. Tuned empirically against real photos, not derived — see
- * scripts/tune-outline.ts and scripts/tune-subject-mask.ts (both deleted
- * after use). `backgroundPercentile` needed to go much higher than expected
- * (0.999, not ~0.96) — busy natural textures like rock/foliage turned out to
- * have surprisingly strong local gradients, comparable to or stronger than
- * many real subject edges, so a moderate percentile bump barely thinned them
- * out; only a very strict background threshold actually quieted them while
- * leaving the subject fully detailed. Without `subjectMask`,
- * `foregroundPercentile` applies uniformly (identical to the original
- * single-threshold behavior).
- */
+function dilateDisc(mask: Uint8Array, width: number, height: number, radius: number): Uint8Array {
+  if (radius <= 0) return mask
+  const offsets: number[] = []
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      if (dx * dx + dy * dy <= radius * radius && (dx !== 0 || dy !== 0)) offsets.push(dx, dy)
+    }
+  }
+
+  const out = new Uint8Array(mask)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!mask[y * width + x]) continue
+      for (let k = 0; k < offsets.length; k += 2) {
+        const nx = x + offsets[k]
+        const ny = y + offsets[k + 1]
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) out[ny * width + nx] = 1
+      }
+    }
+  }
+  return out
+}
+
 export function generateOutline(
   pixels: Uint8ClampedArray,
   width: number,
   height: number,
   options: GenerateOutlineOptions = {},
 ): Uint8ClampedArray {
-  const { subjectMask, foregroundPercentile = 0.9, backgroundPercentile = 0.999 } = options
+  const { subjectMask } = options
   const size = width * height
-  const gray = toGrayscale(pixels, size)
-  const blurred = boxBlur3x3(gray, width, height)
-  const magnitude = sobelMagnitude(blurred, width, height)
 
-  const out = new Uint8ClampedArray(size * 4)
+  const result = segmentImage(pixels, width, height, OUTLINE_PARAMS.colorCount, {
+    minRegionAreaPx: effectiveMinArea(OUTLINE_PARAMS.minRegionArea, width, height),
+    backgroundMinRegionAreaPx: effectiveMinArea(OUTLINE_PARAMS.backgroundMinRegionArea, width, height),
+    subjectMask,
+    backgroundSimilarityDeltaE: OUTLINE_PARAMS.backgroundSimilarityDeltaE,
+    smoothing: OUTLINE_PARAMS.smoothing,
+    modeFilterRadius: OUTLINE_PARAMS.modeFilterRadius,
+  })
+  const labels = decodeLabelMap(result.labelMap)
 
-  if (!subjectMask) {
-    const threshold = percentileThreshold(magnitude, foregroundPercentile)
+  // Region-level subject membership, so the silhouette line coincides exactly
+  // with segmentation boundaries instead of the raw (pixel-noisy) mask edge.
+  let isSubjectRegion: Uint8Array | undefined
+  if (subjectMask) {
+    const maxId = result.regions.reduce((max, r) => Math.max(max, r.id), 0)
+    const confidenceSum = new Float64Array(maxId + 1)
+    const count = new Float64Array(maxId + 1)
     for (let i = 0; i < size; i++) {
-      out[i * 4 + 3] = magnitude[i] >= threshold ? 255 : 0
+      confidenceSum[labels[i]] += subjectMask[i]
+      count[labels[i]]++
     }
-    return out
+    isSubjectRegion = new Uint8Array(maxId + 1)
+    for (let id = 1; id <= maxId; id++) {
+      if (count[id] > 0 && confidenceSum[id] / count[id] > 127) isSubjectRegion[id] = 1
+    }
   }
 
-  const fgThreshold = percentileThreshold(magnitude, foregroundPercentile)
-  const bgThreshold = percentileThreshold(magnitude, backgroundPercentile)
+  const silhouette = new Uint8Array(size)
+  const interior = new Uint8Array(size)
+  const background = new Uint8Array(size)
+
+  const classify = (i: number, j: number) => {
+    if (labels[i] === labels[j]) return
+    if (!isSubjectRegion) {
+      interior[i] = interior[j] = 1
+      return
+    }
+    const a = isSubjectRegion[labels[i]]
+    const b = isSubjectRegion[labels[j]]
+    if (a !== b) {
+      silhouette[i] = silhouette[j] = 1
+    } else if (a) {
+      interior[i] = interior[j] = 1
+    } else {
+      background[i] = background[j] = 1
+    }
+  }
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x
+      if (x < width - 1) classify(i, i + 1)
+      if (y < height - 1) classify(i, i + width)
+    }
+  }
+
+  const strokes = [
+    dilateDisc(silhouette, width, height, SILHOUETTE_DILATE),
+    dilateDisc(interior, width, height, INTERIOR_DILATE),
+    dilateDisc(background, width, height, BACKGROUND_DILATE),
+  ]
+
+  const out = new Uint8ClampedArray(size * 4)
   for (let i = 0; i < size; i++) {
-    const threshold = subjectMask[i] > 128 ? fgThreshold : bgThreshold
-    out[i * 4 + 3] = magnitude[i] >= threshold ? 255 : 0
+    if (strokes[0][i] || strokes[1][i] || strokes[2][i]) {
+      const o = i * 4
+      out[o] = INK[0]
+      out[o + 1] = INK[1]
+      out[o + 2] = INK[2]
+      out[o + 3] = 255
+    }
   }
   return out
 }

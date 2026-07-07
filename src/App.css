@@ -81,6 +81,97 @@
   margin: 0.5rem 0 0;
 }
 
+.puzzle-card-cell {
+  position: relative;
+}
+
+.puzzle-card-delete {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.add-photo-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border: 2px dashed #999;
+  border-radius: 8px;
+}
+
+.add-photo-card p {
+  margin: 0;
+}
+
+.add-photo-plus {
+  font-size: 2.5rem;
+  line-height: 1;
+}
+
+.add-photo-name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  text-align: left;
+}
+
+.add-photo-name input {
+  font-size: 1.1rem;
+  padding: 0.5em 0.7em;
+  border-radius: 8px;
+  border: 1px solid #999;
+  background: inherit;
+  color: inherit;
+}
+
+.add-photo-hint {
+  color: #888;
+  font-size: 0.85rem;
+  text-align: center;
+  margin: 0;
+}
+
+.add-photo-error {
+  color: #d64545;
+  text-align: center;
+  margin: 0;
+}
+
+.process-stage-list {
+  list-style: none;
+  max-width: 340px;
+  margin: 0 auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.process-stage-list li {
+  color: #999;
+}
+
+.process-stage-list li.active {
+  color: inherit;
+  font-weight: 600;
+}
+
+.process-stage-list li.done {
+  color: #4a9;
+}
+
 .picker-preview {
   display: block;
   max-width: 280px;

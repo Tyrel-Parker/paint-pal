@@ -1,6 +1,8 @@
 import type { Palette, PuzzleRegion } from '../../types/puzzle'
-import { quantizeImage } from './quantize'
-import { smoothPaletteIndex } from './smooth'
+import { rgbaToLab, labToHex } from './lab'
+import { smoothLab } from './bilateral'
+import { buildPaletteKMeans, assignToPalette } from './kmeans'
+import { modeFilter } from './modeFilter'
 import { labelRegions, computeAdjacency } from './connectedComponents'
 import { mergeSmallRegions } from './mergeSmallRegions'
 import { encodeLabelMap } from './rle'
@@ -8,6 +10,12 @@ import type { SegmentationOptions, SegmentationResult } from './types'
 
 const DEFAULT_MIN_AREA_FRACTION = 0.004
 const DEFAULT_MIN_AREA_FLOOR_PX = 150
+const DEFAULT_SMOOTHING = { iterations: 5, rangeSigma: 11 }
+const DEFAULT_MODE_FILTER_RADIUS = 3
+const MODE_FILTER_PASSES = 2
+const DEFAULT_SUBJECT_WEIGHT = 3
+/** Final palette colors get a slight chroma push — the bilateral flattening desaturates a touch. */
+const PALETTE_CHROMA_BOOST = 1.12
 
 function findNearestMemberPixel(
   finalLabels: Uint32Array,
@@ -41,9 +49,34 @@ export function segmentImage(
   colorCount: number,
   options: SegmentationOptions = {},
 ): SegmentationResult {
-  const { paletteIndex, paletteColors } = quantizeImage(pixels, width, height, colorCount)
-  const smoothedIndex = smoothPaletteIndex(paletteIndex, width, height, 2)
-  const { labels, areaByRegion, colorIndexByRegion } = labelRegions(smoothedIndex, width, height)
+  const size = width * height
+  const smoothing = options.smoothing ?? DEFAULT_SMOOTHING
+  const modeFilterRadius = options.modeFilterRadius ?? DEFAULT_MODE_FILTER_RADIUS
+  const subjectWeight = options.subjectWeight ?? DEFAULT_SUBJECT_WEIGHT
+
+  // 1. Perceptual color space + edge-preserving smoothing: flatten texture and
+  //    lighting gradients so everything downstream follows object structure.
+  const lab = rgbaToLab(pixels, size)
+  const smoothed = smoothLab(lab, width, height, smoothing)
+
+  // 2. Palette via weighted k-means: subject pixels count more, so palette
+  //    diversity goes to the subject instead of sky/grass.
+  let weights: Float32Array | undefined
+  if (options.subjectMask && subjectWeight > 1) {
+    const mask = options.subjectMask
+    weights = new Float32Array(size)
+    for (let i = 0; i < size; i++) weights[i] = 1 + (mask[i] / 255) * (subjectWeight - 1)
+  }
+  const centroids = buildPaletteKMeans(smoothed, size, colorCount, weights)
+  const paletteColorCount = centroids.length / 3
+
+  // 3. Per-pixel assignment + mode-filter boundary cleanup.
+  let paletteIndex = assignToPalette(smoothed, size, centroids)
+  paletteIndex = modeFilter(paletteIndex, width, height, modeFilterRadius, MODE_FILTER_PASSES, paletteColorCount)
+
+  // 4. Regions: connected components, then merge-away of too-small regions
+  //    (into the nearest-colored neighbor) with subject-aware thresholds.
+  const { labels, areaByRegion, colorIndexByRegion } = labelRegions(paletteIndex, width, height)
   const adjacency = computeAdjacency(labels, width, height)
 
   const minAreaPx =
@@ -66,7 +99,12 @@ export function segmentImage(
     colorIndexByRegion,
     adjacency,
     minAreaPx,
-    { backgroundMinAreaPx: options.backgroundMinRegionAreaPx, regionForegroundConfidence },
+    {
+      backgroundMinAreaPx: options.backgroundMinRegionAreaPx,
+      regionForegroundConfidence,
+      paletteLab: centroids,
+      backgroundSimilarityDeltaE: options.backgroundSimilarityDeltaE,
+    },
   )
 
   // Renumber surviving root ids to sequential 1..N in raster first-appearance order,
@@ -104,7 +142,12 @@ export function segmentImage(
 
   const palette: Palette = {}
   for (const [colorIndex, colorNumber] of colorNumberByColorIndex) {
-    palette[colorNumber] = paletteColors[colorIndex]
+    palette[colorNumber] = labToHex(
+      centroids[colorIndex * 3],
+      centroids[colorIndex * 3 + 1],
+      centroids[colorIndex * 3 + 2],
+      PALETTE_CHROMA_BOOST,
+    )
   }
 
   const regions: PuzzleRegion[] = []
@@ -133,5 +176,6 @@ export function segmentImage(
   }
 }
 
-export { MAX_DIMENSION, TARGET_COLOR_COUNT, MERGE_THRESHOLD, BACKGROUND_MERGE_THRESHOLD } from './constants'
+export { DIFFICULTY_PARAMS, OUTLINE_PARAMS, effectiveMinArea } from './constants'
+export type { DifficultyParams } from './constants'
 export { decodeLabelMap } from './rle'
