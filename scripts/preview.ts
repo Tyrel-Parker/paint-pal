@@ -78,7 +78,13 @@ async function buildSheet(slug: string, puzzles: Puzzle[]) {
   const medium = byDifficulty.get('medium') ?? puzzles[0]
   const cellHeight = Math.round((CELL_WIDTH * medium.height) / medium.width)
 
-  const sourceFile = (await import('node:fs')).readdirSync(SOURCE_DIR).find((f) => f.startsWith(slug + '.'))
+  const slugOf = (f: string) =>
+    f
+      .replace(/\.[^.]*$/, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+  const sourceFile = (await import('node:fs')).readdirSync(SOURCE_DIR).find((f) => slugOf(f) === slug)
 
   const cells: Buffer[] = []
   cells.push(

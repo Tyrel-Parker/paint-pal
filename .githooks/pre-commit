@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Auto-preprocess: if this commit touches images in source-images/, run the
+# (incremental) preprocess, stage the regenerated puzzle assets, and leave a
+# note for prepare-commit-msg to append to the commit message.
+set -euo pipefail
+
+BLURB_FILE="$(git rev-parse --git-dir)/paint-pal-preprocess-blurb"
+rm -f "$BLURB_FILE" # never let a stale note from an aborted commit leak in
+
+changed=$(git diff --cached --name-only --diff-filter=ACMRD -- source-images | grep -iE '\.(jpe?g|png|webp)$' || true)
+[ -z "$changed" ] && exit 0
+
+echo "source-images changed — running incremental preprocess..."
+npm run --silent preprocess
+
+git add public/puzzles/manifest.json public/puzzles/preprocess-cache.json public/puzzles/images
+
+{
+  echo ""
+  echo "[auto] Preprocessed source-image change(s) and staged regenerated puzzle assets:"
+  echo "$changed" | sed 's/^/  - /'
+} > "$BLURB_FILE"
+
+echo "Puzzle assets regenerated and staged."
+echo "Tip: eyeball the new image with 'npm run preview:puzzles' (preview/<name>.png)."

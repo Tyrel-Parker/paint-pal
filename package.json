@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "preprocess": "tsx scripts/preprocess.ts",
-    "preview:puzzles": "tsx scripts/preview.ts"
+    "preview:puzzles": "tsx scripts/preview.ts",
+    "prepare": "git config core.hooksPath .githooks || true"
   },
   "dependencies": {
     "@imgly/background-removal": "^1.7.0",

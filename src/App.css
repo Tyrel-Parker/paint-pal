@@ -256,13 +256,34 @@
   gap: 1rem;
 }
 
+.zoom-viewport {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #fff;
+}
+
 .puzzle-canvas {
   display: block;
   width: 100%;
   height: auto;
-  border-radius: 8px;
   background: #fff;
-  touch-action: none;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.zoom-reset {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  padding: 0.4em 0.7em;
+  border-radius: 8px;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.9rem;
+  cursor: pointer;
 }
 
 .free-paint-stack {

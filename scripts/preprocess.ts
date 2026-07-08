@@ -1,4 +1,6 @@
-import { readdir, mkdir, writeFile } from 'node:fs/promises'
+import { readdir, mkdir, writeFile, readFile, rm } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -137,10 +139,36 @@ async function processImage(fileName: string): Promise<Puzzle[]> {
   return puzzles
 }
 
-async function main() {
-  ;({ segmentForeground } = await import('@imgly/background-removal-node'))
-  sharp = (await import('sharp')).default
+const CACHE_PATH = path.join(PUBLIC_DIR, 'preprocess-cache.json')
+const MANIFEST_PATH = path.join(PUBLIC_DIR, 'manifest.json')
+const DIFFICULTY_COUNT = DIFFICULTIES.length
 
+/** slug -> sha1 of the source file it was last processed from. */
+type Cache = Record<string, string>
+
+async function loadJson<T>(file: string): Promise<T | undefined> {
+  try {
+    return JSON.parse(await readFile(file, 'utf8')) as T
+  } catch {
+    return undefined
+  }
+}
+
+function generatedAssetsExist(slug: string): boolean {
+  return (
+    existsSync(path.join(IMAGES_DIR, `${slug}-outline.png`)) &&
+    existsSync(path.join(IMAGES_DIR, `${slug}-thumb.webp`))
+  )
+}
+
+/**
+ * Incremental by default: images whose content hash matches the cache and
+ * whose generated assets are all present are skipped. `--force` reprocesses
+ * everything — run it after changing pipeline code, since code changes don't
+ * show up in source hashes.
+ */
+async function main() {
+  const force = process.argv.includes('--force')
   await mkdir(IMAGES_DIR, { recursive: true })
 
   const entries = await readdir(SOURCE_DIR)
@@ -151,14 +179,63 @@ async function main() {
     return
   }
 
-  const manifest: Puzzle[] = []
-  for (const fileName of imageFiles) {
-    console.log(`Processing ${fileName}...`)
-    manifest.push(...(await processImage(fileName)))
+  const cache = (!force && (await loadJson<Cache>(CACHE_PATH))) || {}
+  const existingManifest = (!force && (await loadJson<Puzzle[]>(MANIFEST_PATH))) || []
+  const manifestBySlug = new Map<string, Puzzle[]>()
+  for (const puzzle of existingManifest) {
+    const slug = puzzle.id.replace(/-(easy|medium|hard)$/, '')
+    manifestBySlug.set(slug, [...(manifestBySlug.get(slug) ?? []), puzzle])
   }
 
-  await writeFile(path.join(PUBLIC_DIR, 'manifest.json'), JSON.stringify(manifest))
-  console.log(`\nWrote ${manifest.length} puzzles from ${imageFiles.length} image(s) to public/puzzles/manifest.json`)
+  const nextCache: Cache = {}
+  const manifest: Puzzle[] = []
+  const pending: Array<{ fileName: string; slug: string; hash: string }> = []
+  let skipped = 0
+
+  for (const fileName of imageFiles) {
+    const slug = slugify(fileName)
+    const hash = createHash('sha1')
+      .update(await readFile(path.join(SOURCE_DIR, fileName)))
+      .digest('hex')
+    const cachedEntries = manifestBySlug.get(slug)
+    if (cache[slug] === hash && cachedEntries?.length === DIFFICULTY_COUNT && generatedAssetsExist(slug)) {
+      manifest.push(...cachedEntries)
+      nextCache[slug] = hash
+      skipped++
+    } else {
+      pending.push({ fileName, slug, hash })
+    }
+  }
+
+  if (pending.length > 0) {
+    // Deferred until we know there's work: loading these is slow, and the
+    // import order matters (see the comment on the declarations above).
+    ;({ segmentForeground } = await import('@imgly/background-removal-node'))
+    sharp = (await import('sharp')).default
+
+    for (const { fileName, slug, hash } of pending) {
+      console.log(`Processing ${fileName}...`)
+      manifest.push(...(await processImage(fileName)))
+      nextCache[slug] = hash
+    }
+  }
+
+  // Drop generated assets for source images that no longer exist.
+  const liveSlugs = new Set(imageFiles.map(slugify))
+  for (const slug of manifestBySlug.keys()) {
+    if (liveSlugs.has(slug)) continue
+    console.log(`Removing assets for deleted image "${slug}"`)
+    await rm(path.join(IMAGES_DIR, `${slug}-outline.png`), { force: true })
+    await rm(path.join(IMAGES_DIR, `${slug}-thumb.webp`), { force: true })
+  }
+
+  manifest.sort((a, b) => a.id.localeCompare(b.id))
+  await writeFile(MANIFEST_PATH, JSON.stringify(manifest))
+  await writeFile(CACHE_PATH, JSON.stringify(nextCache, null, 2) + '\n')
+  console.log(
+    `\nManifest: ${manifest.length} puzzles from ${imageFiles.length} image(s) ` +
+      `(${pending.length} processed, ${skipped} up to date)`,
+  )
 }
 
 main().catch((error) => {

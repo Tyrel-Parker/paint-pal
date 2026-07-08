@@ -6,10 +6,16 @@ no backend, no account, everything saves to the device via IndexedDB.
 
 ## How it works
 
-1. **Built-in pictures**: drop a photo into `source-images/` and run
-   `npm run preprocess`. Each photo becomes a Free Paint outline plus three
-   paint-by-numbers puzzles (easy/medium/hard), written to `public/puzzles/`
-   as a static manifest that ships with the app.
+1. **Built-in pictures**: drop a photo into `source-images/` and commit it —
+   a pre-commit hook (`.githooks/`, wired up by `npm install`) automatically
+   runs the preprocess for changed images, stages the regenerated
+   `public/puzzles/` assets into the same commit, and appends a note to the
+   commit message. Each photo becomes a Free Paint outline plus three
+   paint-by-numbers puzzles (easy/medium/hard). You can also run
+   `npm run preprocess` manually; it's incremental (content-hash cache in
+   `public/puzzles/preprocess-cache.json`) and handles deleted sources.
+   **After changing pipeline code**, run `npm run preprocess -- --force` —
+   code changes don't show up in source hashes.
 2. **Your own photos**: tap "＋ Add your photo" in the gallery. The same
    pipeline runs in the browser on that device; results are saved to
    IndexedDB and never leave the phone.

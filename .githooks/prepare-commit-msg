@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Appends the pre-commit hook's auto-preprocess note to the commit message.
+set -euo pipefail
+
+MSG_FILE="$1"
+SOURCE="${2:-}"
+BLURB_FILE="$(git rev-parse --git-dir)/paint-pal-preprocess-blurb"
+
+case "$SOURCE" in
+  merge | squash) exit 0 ;;
+esac
+
+if [ -f "$BLURB_FILE" ]; then
+  cat "$BLURB_FILE" >> "$MSG_FILE"
+  rm -f "$BLURB_FILE"
+fi
