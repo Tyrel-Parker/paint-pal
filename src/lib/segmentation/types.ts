@@ -16,8 +16,14 @@ export interface SegmentationOptions {
   smoothedLab?: Float32Array
   /** Mode-filter radius for boundary cleanup (0 disables). */
   modeFilterRadius?: number
-  /** Extra k-means weight multiplier at full foreground confidence (1 = no boost). */
-  subjectWeight?: number
+  /**
+   * Desired final region-count range. When the first pass lands outside it,
+   * the cheap stages rerun with adjusted color counts / merge thresholds
+   * (the expensive bilateral smoothing is reused) — this is what keeps flat
+   * hazy photos from collapsing to a handful of giant blobs, and busy ones
+   * from exploding.
+   */
+  targetRegions?: { min: number; max: number }
 }
 
 export interface SegmentationResult {

@@ -1,10 +1,10 @@
 import type { Palette, PuzzleRegion } from '../../types/puzzle'
 import { rgbaToLab, labToHex } from './lab'
 import { smoothLab } from './bilateral'
-import { buildPaletteKMeans, assignToPalette } from './kmeans'
+import { buildPaletteKMeans, assignToPalette, assignToPalettePartitioned } from './kmeans'
 import { modeFilter } from './modeFilter'
 import { labelRegions, computeAdjacency } from './connectedComponents'
-import { mergeSmallRegions } from './mergeSmallRegions'
+import { mergeSmallRegions, type MergeResult } from './mergeSmallRegions'
 import { encodeLabelMap } from './rle'
 import type { SegmentationOptions, SegmentationResult } from './types'
 
@@ -13,9 +13,13 @@ const DEFAULT_MIN_AREA_FLOOR_PX = 150
 const DEFAULT_SMOOTHING = { iterations: 5, rangeSigma: 11 }
 const DEFAULT_MODE_FILTER_RADIUS = 3
 const MODE_FILTER_PASSES = 2
-const DEFAULT_SUBJECT_WEIGHT = 3
 /** Final palette colors get a slight chroma push — the bilateral flattening desaturates a touch. */
 const PALETTE_CHROMA_BOOST = 1.12
+/** Share of the color budget the subject gets when a mask splits the palette. */
+const FOREGROUND_COLOR_SHARE = 0.65
+/** Masks covering (almost) nothing or everything carry no usable split. */
+const USABLE_MASK_FRACTION = 0.02
+const MAX_TARGET_ATTEMPTS = 3
 
 function findNearestMemberPixel(
   finalLabels: Uint32Array,
@@ -42,6 +46,20 @@ function findNearestMemberPixel(
   return { x: cx, y: cy }
 }
 
+interface AttemptParams {
+  colorCount: number
+  minAreaPx: number
+  backgroundMinAreaPx?: number
+  backgroundSimilarityDeltaE?: number
+}
+
+interface AttemptResult {
+  labels: Uint32Array
+  merge: MergeResult
+  centroids: Float32Array
+  regionCount: number
+}
+
 export function segmentImage(
   pixels: Uint8ClampedArray,
   width: number,
@@ -52,59 +70,112 @@ export function segmentImage(
   const size = width * height
   const smoothing = options.smoothing ?? DEFAULT_SMOOTHING
   const modeFilterRadius = options.modeFilterRadius ?? DEFAULT_MODE_FILTER_RADIUS
-  const subjectWeight = options.subjectWeight ?? DEFAULT_SUBJECT_WEIGHT
 
   // 1. Perceptual color space + edge-preserving smoothing: flatten texture and
   //    lighting gradients so everything downstream follows object structure.
+  //    This is the expensive stage — the adaptive attempts below all reuse it.
   const smoothed = options.smoothedLab ?? smoothLab(rgbaToLab(pixels, size), width, height, smoothing)
 
-  // 2. Palette via weighted k-means: subject pixels count more, so palette
-  //    diversity goes to the subject instead of sky/grass.
-  let weights: Float32Array | undefined
-  if (options.subjectMask && subjectWeight > 1) {
-    const mask = options.subjectMask
-    weights = new Float32Array(size)
-    for (let i = 0; i < size; i++) weights[i] = 1 + (mask[i] / 255) * (subjectWeight - 1)
-  }
-  const centroids = buildPaletteKMeans(smoothed, size, colorCount, weights)
-  const paletteColorCount = centroids.length / 3
-
-  // 3. Per-pixel assignment + mode-filter boundary cleanup.
-  let paletteIndex = assignToPalette(smoothed, size, centroids)
-  paletteIndex = modeFilter(paletteIndex, width, height, modeFilterRadius, MODE_FILTER_PASSES, paletteColorCount)
-
-  // 4. Regions: connected components, then merge-away of too-small regions
-  //    (into the nearest-colored neighbor) with subject-aware thresholds.
-  const { labels, areaByRegion, colorIndexByRegion } = labelRegions(paletteIndex, width, height)
-  const adjacency = computeAdjacency(labels, width, height)
-
-  const minAreaPx =
-    options.minRegionAreaPx ??
-    Math.max(width * height * DEFAULT_MIN_AREA_FRACTION, DEFAULT_MIN_AREA_FLOOR_PX)
-
-  let regionForegroundConfidence: Map<number, number> | undefined
+  // Hard subject/background partition (when the mask is informative): each
+  // side gets its own palette so a small or low-contrast subject can't lose
+  // its colors to acres of sky, and vice versa — "no detail and no background"
+  // both come from the two sides competing for one budget.
+  let isForeground: Uint8Array | undefined
   if (options.subjectMask) {
     const mask = options.subjectMask
-    const maskSum = new Float64Array(areaByRegion.length)
-    for (let i = 0; i < labels.length; i++) maskSum[labels[i]] += mask[i]
-    regionForegroundConfidence = new Map()
-    for (let id = 0; id < areaByRegion.length; id++) {
-      regionForegroundConfidence.set(id, areaByRegion[id] > 0 ? maskSum[id] / areaByRegion[id] / 255 : 0)
+    isForeground = new Uint8Array(size)
+    let fgCount = 0
+    for (let i = 0; i < size; i++) {
+      if (mask[i] > 128) {
+        isForeground[i] = 1
+        fgCount++
+      }
     }
+    const fraction = fgCount / size
+    if (fraction < USABLE_MASK_FRACTION || fraction > 1 - USABLE_MASK_FRACTION) isForeground = undefined
   }
 
-  const { finalRegionId, areaByFinalRegion, colorIndexByFinalRegion } = mergeSmallRegions(
-    areaByRegion,
-    colorIndexByRegion,
-    adjacency,
-    minAreaPx,
-    {
-      backgroundMinAreaPx: options.backgroundMinRegionAreaPx,
+  const runAttempt = (params: AttemptParams): AttemptResult => {
+    let paletteIndex: Uint32Array
+    let centroids: Float32Array
+    let foregroundColorCount: number | undefined
+
+    if (isForeground) {
+      const fgK = Math.max(4, Math.round(params.colorCount * FOREGROUND_COLOR_SHARE))
+      const bgK = Math.max(3, params.colorCount - fgK)
+      const isBackground = new Uint8Array(size)
+      for (let i = 0; i < size; i++) isBackground[i] = isForeground[i] ? 0 : 1
+      const fgCentroids = buildPaletteKMeans(smoothed, size, fgK, isForeground)
+      const bgCentroids = buildPaletteKMeans(smoothed, size, bgK, isBackground)
+      foregroundColorCount = fgCentroids.length / 3
+      centroids = new Float32Array(fgCentroids.length + bgCentroids.length)
+      centroids.set(fgCentroids, 0)
+      centroids.set(bgCentroids, fgCentroids.length)
+      paletteIndex = assignToPalettePartitioned(smoothed, size, fgCentroids, bgCentroids, isForeground)
+      paletteIndex = modeFilter(paletteIndex, width, height, modeFilterRadius, MODE_FILTER_PASSES, centroids.length / 3, {
+        isForeground,
+        foregroundColorCount,
+      })
+    } else {
+      centroids = buildPaletteKMeans(smoothed, size, params.colorCount)
+      paletteIndex = assignToPalette(smoothed, size, centroids)
+      paletteIndex = modeFilter(paletteIndex, width, height, modeFilterRadius, MODE_FILTER_PASSES, centroids.length / 3)
+    }
+
+    const { labels, areaByRegion, colorIndexByRegion } = labelRegions(paletteIndex, width, height)
+    const adjacency = computeAdjacency(labels, width, height)
+
+    let regionForegroundConfidence: Map<number, number> | undefined
+    if (options.subjectMask) {
+      const mask = options.subjectMask
+      const maskSum = new Float64Array(areaByRegion.length)
+      for (let i = 0; i < labels.length; i++) maskSum[labels[i]] += mask[i]
+      regionForegroundConfidence = new Map()
+      for (let id = 0; id < areaByRegion.length; id++) {
+        regionForegroundConfidence.set(id, areaByRegion[id] > 0 ? maskSum[id] / areaByRegion[id] / 255 : 0)
+      }
+    }
+
+    const merge = mergeSmallRegions(areaByRegion, colorIndexByRegion, adjacency, params.minAreaPx, {
+      backgroundMinAreaPx: params.backgroundMinAreaPx,
       regionForegroundConfidence,
       paletteLab: centroids,
-      backgroundSimilarityDeltaE: options.backgroundSimilarityDeltaE,
-    },
-  )
+      backgroundSimilarityDeltaE: params.backgroundSimilarityDeltaE,
+      foregroundColorCount,
+    })
+
+    return { labels, merge, centroids, regionCount: merge.areaByFinalRegion.size }
+  }
+
+  // 2..4 with adaptive retry: too few regions -> more colors + gentler merging;
+  //      too many -> merge harder. Bilateral smoothing is shared across attempts.
+  const params: AttemptParams = {
+    colorCount,
+    minAreaPx:
+      options.minRegionAreaPx ?? Math.max(width * height * DEFAULT_MIN_AREA_FRACTION, DEFAULT_MIN_AREA_FLOOR_PX),
+    backgroundMinAreaPx: options.backgroundMinRegionAreaPx,
+    backgroundSimilarityDeltaE: options.backgroundSimilarityDeltaE,
+  }
+  const target = options.targetRegions
+  let attempt = runAttempt(params)
+  for (let retry = 1; target && retry < MAX_TARGET_ATTEMPTS; retry++) {
+    if (attempt.regionCount < target.min) {
+      params.colorCount = Math.round(params.colorCount * 1.5) + 2
+      params.minAreaPx *= 0.5
+      if (params.backgroundMinAreaPx !== undefined) params.backgroundMinAreaPx *= 0.5
+      if (params.backgroundSimilarityDeltaE !== undefined) params.backgroundSimilarityDeltaE *= 0.7
+    } else if (attempt.regionCount > target.max) {
+      const overshoot = attempt.regionCount / target.max
+      params.minAreaPx *= overshoot * 1.2
+      if (params.backgroundMinAreaPx !== undefined) params.backgroundMinAreaPx *= overshoot * 1.2
+    } else {
+      break
+    }
+    attempt = runAttempt(params)
+  }
+
+  const { labels, merge, centroids } = attempt
+  const { finalRegionId, areaByFinalRegion, colorIndexByFinalRegion } = merge
 
   // Renumber surviving root ids to sequential 1..N in raster first-appearance order,
   // accumulating centroid sums in the same pass.

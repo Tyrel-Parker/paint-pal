@@ -35,6 +35,12 @@ export interface MergeSmallRegionsOptions {
    * survive size thresholds because each band is individually large.
    */
   backgroundSimilarityDeltaE?: number
+  /**
+   * Palette indices below this are foreground colors (split-palette mode).
+   * Small regions then strongly prefer merging into a neighbor on their own
+   * side of the silhouette; crossing it is a last resort for mask specks.
+   */
+  foregroundColorCount?: number
 }
 
 /** ΔE band within which two candidate colors count as "equally close" and border length decides. */
@@ -57,7 +63,13 @@ export function mergeSmallRegions(
   minAreaPx: number,
   options: MergeSmallRegionsOptions = {},
 ): MergeResult {
-  const { backgroundMinAreaPx, regionForegroundConfidence, paletteLab, backgroundSimilarityDeltaE } = options
+  const {
+    backgroundMinAreaPx,
+    regionForegroundConfidence,
+    paletteLab,
+    backgroundSimilarityDeltaE,
+    foregroundColorCount,
+  } = options
   const regionCount = areaByRegion.length
   const parent = Int32Array.from({ length: regionCount }, (_, i) => i)
   const area = [...areaByRegion]
@@ -91,9 +103,15 @@ export function mergeSmallRegions(
     for (const [neighbor, sharedBorder] of neighbors) {
       const neighborRoot = find(neighbor)
       if (neighborRoot === root) continue
-      const bucket = paletteLab
+      let bucket = paletteLab
         ? Math.floor(Math.sqrt(labDistSq(paletteLab, colorIndex[root], colorIndex[neighborRoot])) / NEAR_TIE_DELTA_E)
         : 0
+      if (
+        foregroundColorCount !== undefined &&
+        colorIndex[root] < foregroundColorCount !== colorIndex[neighborRoot] < foregroundColorCount
+      ) {
+        bucket += 1000 // crossing the silhouette: allowed, but only when nothing else will take it
+      }
       const score = sharedBorder * 1e6 + area[neighborRoot] * 10 - neighborRoot
       if (bucket < bestBucket || (bucket === bestBucket && score > bestScore)) {
         bestBucket = bucket

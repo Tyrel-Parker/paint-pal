@@ -113,6 +113,7 @@ async function processImage(fileName: string): Promise<Puzzle[]> {
       backgroundSimilarityDeltaE: params.backgroundSimilarityDeltaE,
       smoothing: params.smoothing,
       modeFilterRadius: params.modeFilterRadius,
+      targetRegions: params.targetRegions,
     })
 
     const finalColorCount = Object.keys(result.palette).length

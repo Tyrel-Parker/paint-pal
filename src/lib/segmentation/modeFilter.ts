@@ -8,6 +8,13 @@
  * boundary staircases into organic curves while staying raster-consistent
  * (no vector tracing, so no gap/overlap risk between regions).
  */
+export interface ModeFilterPartition {
+  /** Per-pixel 0/1 partition (subject vs background). */
+  isForeground: Uint8Array
+  /** Palette indices below this are foreground colors. */
+  foregroundColorCount: number
+}
+
 export function modeFilter(
   index: Uint32Array,
   width: number,
@@ -15,6 +22,8 @@ export function modeFilter(
   radius: number,
   passes: number,
   valueCount: number,
+  /** When set, a pixel never flips to a color from the other partition — the subject boundary stays put. */
+  partition?: ModeFilterPartition,
 ): Uint32Array {
   if (radius <= 0 || passes <= 0) return index
 
@@ -49,16 +58,25 @@ export function modeFilter(
           }
         }
 
-        const center = current[y * width + x]
+        const i = y * width + x
+        const center = current[i]
         let bestValue = center
         let bestCount = counts[center] // ties go to the current value: no churn on 50/50 boundaries
-        for (let v = 0; v < valueCount; v++) {
+        // With a partition, votes for the other side's colors are ignored so a
+        // foreground pixel near the silhouette can't get mode-filtered into sky.
+        let vFrom = 0
+        let vTo = valueCount
+        if (partition) {
+          if (partition.isForeground[i]) vTo = partition.foregroundColorCount
+          else vFrom = partition.foregroundColorCount
+        }
+        for (let v = vFrom; v < vTo; v++) {
           if (counts[v] > bestCount) {
             bestCount = counts[v]
             bestValue = v
           }
         }
-        next[y * width + x] = bestValue
+        next[i] = bestValue
       }
     }
     current = next

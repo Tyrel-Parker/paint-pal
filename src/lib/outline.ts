@@ -96,6 +96,7 @@ export function generateOutline(
     smoothing: OUTLINE_PARAMS.smoothing,
     smoothedLab,
     modeFilterRadius: OUTLINE_PARAMS.modeFilterRadius,
+    targetRegions: OUTLINE_PARAMS.targetRegions,
   })
   const labels = decodeLabelMap(result.labelMap)
 

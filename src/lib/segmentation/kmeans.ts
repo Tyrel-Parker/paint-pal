@@ -1,8 +1,8 @@
 /**
- * Weighted k-means palette selection in Lab space, replacing image-q's Wu
- * quantizer. Two things Wu couldn't do that matter here: distances are
- * perceptual (Lab, not RGB), and subject pixels carry extra weight so palette
- * diversity goes to the subject instead of acres of sky/grass.
+ * K-means palette selection in Lab space, replacing image-q's Wu quantizer:
+ * distances are perceptual (Lab, not RGB), and callers can cluster an
+ * arbitrary pixel subset — the pipeline runs it separately for subject and
+ * background so each gets its own full palette instead of competing.
  */
 
 import { labDistSq } from './lab'
@@ -10,8 +10,12 @@ import { labDistSq } from './lab'
 const MAX_SAMPLES = 80_000
 const MAX_ITERATIONS = 20
 const CONVERGED_SHIFT_SQ = 0.05 * 0.05
-/** Centroids closer than this ΔE get merged — two near-identical palette entries only confuse kids. */
-const DUPLICATE_DELTA_E = 3
+/**
+ * Centroids closer than this ΔE get merged — near-identical palette entries
+ * confuse kids. Kept small: hazy low-contrast photos legitimately need
+ * close-together colors to show any detail at all.
+ */
+const DUPLICATE_DELTA_E = 2
 
 /** Deterministic PRNG so preprocess output is reproducible across runs. */
 function mulberry32(seed: number): () => number {
@@ -29,27 +33,34 @@ function mulberry32(seed: number): () => number {
  * @param lab packed [L,a,b,...] image
  * @param size pixel count
  * @param k requested palette size (result may be smaller after duplicate merge)
- * @param weights optional per-pixel weight (e.g. boosted on the subject)
+ * @param include optional 0/1 mask — only these pixels are clustered
  * @returns packed [L,a,b,...] centroids
  */
 export function buildPaletteKMeans(
   lab: Float32Array,
   size: number,
   k: number,
-  weights?: Float32Array,
+  include?: Uint8Array,
   seed = 0x9e3779b9,
 ): Float32Array {
-  const stride = Math.max(1, Math.floor(size / MAX_SAMPLES))
-  const sampleCount = Math.floor((size - 1) / stride) + 1
-
-  const samples = new Float32Array(sampleCount * 3)
-  const sampleWeights = new Float32Array(sampleCount)
-  for (let s = 0, i = 0; s < sampleCount; s++, i += stride) {
-    samples[s * 3] = lab[i * 3]
-    samples[s * 3 + 1] = lab[i * 3 + 1]
-    samples[s * 3 + 2] = lab[i * 3 + 2]
-    sampleWeights[s] = weights ? weights[i] : 1
+  let includedCount = size
+  if (include) {
+    includedCount = 0
+    for (let i = 0; i < size; i++) if (include[i]) includedCount++
   }
+  if (includedCount === 0) return new Float32Array(0)
+
+  const stride = Math.max(1, Math.floor(includedCount / MAX_SAMPLES))
+  const samplesList: number[] = []
+  let seen = 0
+  for (let i = 0; i < size; i++) {
+    if (include && !include[i]) continue
+    if (seen % stride === 0) samplesList.push(lab[i * 3], lab[i * 3 + 1], lab[i * 3 + 2])
+    seen++
+  }
+  const sampleCount = samplesList.length / 3
+  const samples = Float32Array.from(samplesList)
+  const sampleWeights = new Float32Array(sampleCount).fill(1)
 
   const rand = mulberry32(seed)
   const kEff = Math.min(k, sampleCount)
@@ -189,21 +200,49 @@ export function assignToPalette(lab: Float32Array, size: number, centroids: Floa
   const k = centroids.length / 3
   const out = new Uint32Array(size)
   for (let i = 0; i < size; i++) {
-    const o = i * 3
-    let best = 0
-    let bestDist = Infinity
-    for (let c = 0; c < k; c++) {
-      const co = c * 3
-      const dL = lab[o] - centroids[co]
-      const da = lab[o + 1] - centroids[co + 1]
-      const db = lab[o + 2] - centroids[co + 2]
-      const d = dL * dL + da * da + db * db
-      if (d < bestDist) {
-        bestDist = d
-        best = c
-      }
-    }
-    out[i] = best
+    out[i] = nearestCentroid(lab, i, centroids, 0, k)
   }
   return out
+}
+
+/**
+ * Partitioned assignment: foreground pixels choose only among `fgCentroids`
+ * (palette indices 0..fgK), background pixels only among `bgCentroids`
+ * (indices fgK..fgK+bgK). The subject/background boundary therefore stays a
+ * hard region boundary no matter how similar the colors are.
+ */
+export function assignToPalettePartitioned(
+  lab: Float32Array,
+  size: number,
+  fgCentroids: Float32Array,
+  bgCentroids: Float32Array,
+  isForeground: Uint8Array,
+): Uint32Array {
+  const fgK = fgCentroids.length / 3
+  const bgK = bgCentroids.length / 3
+  const out = new Uint32Array(size)
+  for (let i = 0; i < size; i++) {
+    out[i] = isForeground[i]
+      ? nearestCentroid(lab, i, fgCentroids, 0, fgK)
+      : fgK + nearestCentroid(lab, i, bgCentroids, 0, bgK)
+  }
+  return out
+}
+
+function nearestCentroid(lab: Float32Array, pixel: number, centroids: Float32Array, from: number, to: number): number {
+  const o = pixel * 3
+  let best = from
+  let bestDist = Infinity
+  for (let c = from; c < to; c++) {
+    const co = c * 3
+    const dL = lab[o] - centroids[co]
+    const da = lab[o + 1] - centroids[co + 1]
+    const db = lab[o + 2] - centroids[co + 2]
+    const d = dL * dL + da * da + db * db
+    if (d < bestDist) {
+      bestDist = d
+      best = c
+    }
+  }
+  return best
 }

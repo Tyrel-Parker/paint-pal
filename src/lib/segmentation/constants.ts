@@ -23,6 +23,8 @@ export interface DifficultyParams {
   backgroundMinRegionArea: RegionAreaThreshold
   /** Adjacent background regions closer than this ΔE merge regardless of size (kills gradient banding). */
   backgroundSimilarityDeltaE: number
+  /** Final region-count range the adaptive loop steers toward. */
+  targetRegions: { min: number; max: number }
 }
 
 /**
@@ -41,6 +43,7 @@ export const DIFFICULTY_PARAMS: Record<Difficulty, DifficultyParams> = {
     minRegionArea: { fraction: 0.004, floorPx: 400 },
     backgroundMinRegionArea: { fraction: 0.012, floorPx: 3000 },
     backgroundSimilarityDeltaE: 14,
+    targetRegions: { min: 12, max: 45 },
   },
   medium: {
     maxDimension: 1024,
@@ -50,6 +53,7 @@ export const DIFFICULTY_PARAMS: Record<Difficulty, DifficultyParams> = {
     minRegionArea: { fraction: 0.0015, floorPx: 450 },
     backgroundMinRegionArea: { fraction: 0.008, floorPx: 4500 },
     backgroundSimilarityDeltaE: 9,
+    targetRegions: { min: 30, max: 100 },
   },
   hard: {
     maxDimension: 1536,
@@ -59,6 +63,7 @@ export const DIFFICULTY_PARAMS: Record<Difficulty, DifficultyParams> = {
     minRegionArea: { fraction: 0.0005, floorPx: 400 },
     backgroundMinRegionArea: { fraction: 0.005, floorPx: 6000 },
     backgroundSimilarityDeltaE: 7,
+    targetRegions: { min: 65, max: 200 },
   },
 }
 
@@ -76,6 +81,7 @@ export const OUTLINE_PARAMS: DifficultyParams = {
   minRegionArea: { fraction: 0.004, floorPx: 1500 },
   backgroundMinRegionArea: { fraction: 0.04, floorPx: 20000 },
   backgroundSimilarityDeltaE: 16,
+  targetRegions: { min: 6, max: 40 },
 }
 
 export function effectiveMinArea(threshold: RegionAreaThreshold, width: number, height: number): number {

@@ -102,6 +102,7 @@ export async function processPhotoAll(
       backgroundSimilarityDeltaE: params.backgroundSimilarityDeltaE,
       smoothing: params.smoothing,
       modeFilterRadius: params.modeFilterRadius,
+      targetRegions: params.targetRegions,
     })
 
     puzzles.push({

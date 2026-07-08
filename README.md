@@ -34,9 +34,13 @@ Node (build-time preprocess via `tsx`) and the browser (user photos):
 1. sRGB → CIELAB, then **iterated bilateral filtering** (computed at reduced
    scale, restored via joint bilateral upsampling) — flattens texture and
    lighting so regions follow objects, not gradients.
-2. **Weighted k-means** palette in Lab space; subject pixels (from an
-   on-device background-removal model) get ~3x weight so palette diversity
-   goes to the subject.
+2. **Split-palette k-means** in Lab space: the subject and background (per
+   an on-device background-removal model) are clustered *independently* with
+   their own color budgets, so a small or low-contrast subject can't lose
+   its colors to acres of sky — and the silhouette is a guaranteed region
+   boundary. An adaptive loop retries with more colors / gentler merging
+   when an image lands under its difficulty's target region count (or
+   merges harder when it overshoots).
 3. Nearest-palette assignment, **mode-filter** boundary smoothing, connected
    components, then merging: small regions into their nearest-colored
    neighbor, background regions aggressively (plus a similarity pass that
