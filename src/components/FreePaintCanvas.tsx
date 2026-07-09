@@ -4,16 +4,21 @@ export interface FreePaintCanvasHandle {
   captureSnapshot(): string
 }
 
+export type FreePaintTool = 'brush' | 'eraser'
+
 interface FreePaintCanvasProps {
   outlineSrc: string
   width: number
   height: number
   color: string
+  tool: FreePaintTool
+  brushSize: number
   initialImage?: string
   onStrokeEnd: (snapshotDataUrl: string) => void
 }
 
-const BRUSH_DIAMETER = 28
+/** The page underneath the outline is always white, so erasing just paints white back over it. */
+const ERASE_COLOR = '#ffffff'
 
 function getCanvasPoint(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
   const rect = canvas.getBoundingClientRect()
@@ -23,15 +28,19 @@ function getCanvasPoint(canvas: HTMLCanvasElement, clientX: number, clientY: num
 }
 
 const FreePaintCanvas = forwardRef<FreePaintCanvasHandle, FreePaintCanvasProps>(
-  ({ outlineSrc, width, height, color, initialImage, onStrokeEnd }, ref) => {
+  ({ outlineSrc, width, height, color, tool, brushSize, initialImage, onStrokeEnd }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const outlineImgRef = useRef<HTMLImageElement>(null)
     const colorRef = useRef(color)
+    const toolRef = useRef(tool)
+    const brushSizeRef = useRef(brushSize)
     const isDrawingRef = useRef(false)
     const lastPointRef = useRef<{ x: number; y: number } | null>(null)
     const initializedRef = useRef(false)
 
     colorRef.current = color
+    toolRef.current = tool
+    brushSizeRef.current = brushSize
 
     // Blank white page on mount, then draw the resumed paint layer on top if one exists.
     // Only ever applied once — after that, in-memory canvas state is the source of truth.
@@ -69,15 +78,15 @@ const FreePaintCanvas = forwardRef<FreePaintCanvasHandle, FreePaintCanvasProps>(
     }))
 
     function paintDot(ctx: CanvasRenderingContext2D, x: number, y: number) {
-      ctx.fillStyle = colorRef.current
+      ctx.fillStyle = toolRef.current === 'eraser' ? ERASE_COLOR : colorRef.current
       ctx.beginPath()
-      ctx.arc(x, y, BRUSH_DIAMETER / 2, 0, Math.PI * 2)
+      ctx.arc(x, y, brushSizeRef.current / 2, 0, Math.PI * 2)
       ctx.fill()
     }
 
     function paintLine(ctx: CanvasRenderingContext2D, from: { x: number; y: number }, to: { x: number; y: number }) {
-      ctx.strokeStyle = colorRef.current
-      ctx.lineWidth = BRUSH_DIAMETER
+      ctx.strokeStyle = toolRef.current === 'eraser' ? ERASE_COLOR : colorRef.current
+      ctx.lineWidth = brushSizeRef.current
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
       ctx.beginPath()

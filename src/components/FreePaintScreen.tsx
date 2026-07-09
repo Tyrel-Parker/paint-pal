@@ -2,10 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import type { FinishedWork, Progress } from '../types/puzzle'
 import { deleteProgress, getProgress, saveFinishedWork, saveProgress } from '../lib/storage'
 import type { PuzzleGroup } from '../lib/puzzleGroups'
-import FreePaintCanvas, { type FreePaintCanvasHandle } from './FreePaintCanvas'
+import FreePaintCanvas, { type FreePaintCanvasHandle, type FreePaintTool } from './FreePaintCanvas'
 import ColorPicker from './ColorPicker'
 import { PRESET_COLORS } from '../lib/colorPresets'
 import Breadcrumbs, { type Crumb } from './Breadcrumbs'
+
+const MIN_BRUSH_SIZE = 10
+const MAX_BRUSH_SIZE = 60
+const DEFAULT_BRUSH_SIZE = 28
 
 interface FreePaintScreenProps {
   group: PuzzleGroup
@@ -19,6 +23,8 @@ export default function FreePaintScreen({ group, baseCrumbs, onShowFinished, onF
   const [status, setStatus] = useState<'loading' | 'ready'>('loading')
   const [paintedImage, setPaintedImage] = useState<string | undefined>(undefined)
   const [color, setColor] = useState(PRESET_COLORS[0])
+  const [tool, setTool] = useState<FreePaintTool>('brush')
+  const [brushSize, setBrushSize] = useState(DEFAULT_BRUSH_SIZE)
   const [resetKey, setResetKey] = useState(0)
 
   const canvasRef = useRef<FreePaintCanvasHandle>(null)
@@ -46,6 +52,11 @@ export default function FreePaintScreen({ group, baseCrumbs, onShowFinished, onF
       updatedAt: Date.now(),
     }
     saveProgress(progress)
+  }
+
+  function handleColorChange(hex: string) {
+    setColor(hex)
+    setTool('brush')
   }
 
   async function handleClear() {
@@ -98,11 +109,35 @@ export default function FreePaintScreen({ group, baseCrumbs, onShowFinished, onF
         width={group.outlineWidth}
         height={group.outlineHeight}
         color={color}
+        tool={tool}
+        brushSize={brushSize}
         initialImage={paintedImage}
         onStrokeEnd={handleStrokeEnd}
       />
 
-      <ColorPicker value={color} onChange={setColor} />
+      <div className="free-paint-toolbar">
+        <button
+          className={`tool-button${tool === 'eraser' ? ' selected' : ''}`}
+          aria-pressed={tool === 'eraser'}
+          onClick={() => setTool((t) => (t === 'eraser' ? 'brush' : 'eraser'))}
+        >
+          🧽 Eraser
+        </button>
+        <label className="brush-size-control">
+          <span>Brush size</span>
+          <input
+            type="range"
+            min={MIN_BRUSH_SIZE}
+            max={MAX_BRUSH_SIZE}
+            step={2}
+            value={brushSize}
+            onChange={(e) => setBrushSize(Number(e.target.value))}
+            aria-label="Brush size"
+          />
+        </label>
+      </div>
+
+      <ColorPicker value={color} onChange={handleColorChange} />
       <button className="primary-button" onClick={handleFinish}>
         I'm done! 🎉
       </button>
