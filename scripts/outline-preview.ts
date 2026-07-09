@@ -9,15 +9,27 @@ import path from 'node:path'
 import { mkdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { generateOutline } from '../src/lib/outline.js'
+import { generateLineArtAlpha } from '../src/lib/lineart.js'
 import { OUTLINE_PARAMS } from '../src/lib/segmentation/index.js'
 import { resizeMaskNearest } from '../src/lib/subjectMask.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const OUT = path.join(ROOT, 'preview')
+const MODEL_PATH = path.join(ROOT, 'public', 'models', 'line-art.onnx')
 
 async function main() {
   const { segmentForeground } = await import('@imgly/background-removal-node')
   const sharp = (await import('sharp')).default
+  const ortModule = await import('onnxruntime-node')
+  const ort = ortModule.default ?? ortModule
+  const session = await ort.InferenceSession.create(MODEL_PATH)
+  const io = {
+    async run(input: Float32Array, dims: number[]) {
+      const results = await session.run({ [session.inputNames[0]]: new ort.Tensor('float32', input, dims) })
+      const output = results[session.outputNames[0]]
+      return { data: output.data as Float32Array, dims: output.dims }
+    },
+  }
   await mkdir(OUT, { recursive: true })
 
   const names = process.argv.slice(2)
@@ -45,7 +57,8 @@ async function main() {
     const subjectMask = resizeMaskNearest(alpha, maskRaw.info.width, maskRaw.info.height, info.width, info.height)
 
     const t = Date.now()
-    const rgba = generateOutline(pixels, info.width, info.height, { subjectMask })
+    const lineArtAlpha = await generateLineArtAlpha(pixels, info.width, info.height, io)
+    const rgba = generateOutline(pixels, info.width, info.height, { subjectMask, lineArtAlpha })
     console.log(`${name}: outline in ${Date.now() - t}ms -> preview/outline-${name}.png`)
     await sharp(Buffer.from(rgba), { raw: { width: info.width, height: info.height, channels: 4 } })
       .flatten({ background: '#ffffff' })

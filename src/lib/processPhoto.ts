@@ -1,6 +1,7 @@
 import { segmentImage, DIFFICULTY_PARAMS, OUTLINE_PARAMS, effectiveMinArea } from './segmentation'
 import type { Difficulty, Puzzle } from '../types/puzzle'
 import { generateOutline } from './outline'
+import { generateLineArtAlpha } from './lineart'
 import { resizeMaskNearest } from './subjectMask'
 
 export type ProcessStage = 'loading-model' | 'finding-subject' | Difficulty | 'outline'
@@ -31,6 +32,35 @@ interface SubjectMask {
   data: Uint8Array
   width: number
   height: number
+}
+
+/**
+ * Learned line-art for the outline via onnxruntime-web (wasm). Best-effort:
+ * on any failure (model fetch, wasm init, inference) the outline falls back
+ * to the classical pipeline rather than failing the whole photo.
+ */
+async function tryGenerateLineArt(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+): Promise<Uint8Array | undefined> {
+  try {
+    const ort = await import('onnxruntime-web')
+    const modelUrl = `${import.meta.env.BASE_URL}models/line-art.onnx`
+    const session = await ort.InferenceSession.create(modelUrl, { executionProviders: ['wasm'] })
+    const alpha = await generateLineArtAlpha(pixels, width, height, {
+      async run(input, dims) {
+        const results = await session.run({ [session.inputNames[0]]: new ort.Tensor('float32', input, dims) })
+        const output = results[session.outputNames[0]]
+        return { data: output.data as Float32Array, dims: output.dims }
+      },
+    })
+    await session.release()
+    return alpha
+  } catch (e) {
+    console.warn('line-art model unavailable, using classical outline', e)
+    return undefined
+  }
 }
 
 /**
@@ -75,8 +105,10 @@ export async function processPhotoAll(
   const outlineCanvas = drawToCanvas(bitmap, OUTLINE_PARAMS.maxDimension)
   const outlinePixels = outlineCanvas.ctx.getImageData(0, 0, outlineCanvas.width, outlineCanvas.height)
   const outlineMask = resizeMaskNearest(mask.data, mask.width, mask.height, outlineCanvas.width, outlineCanvas.height)
+  const lineArtAlpha = await tryGenerateLineArt(outlinePixels.data, outlineCanvas.width, outlineCanvas.height)
   const outlineRgba = generateOutline(outlinePixels.data, outlineCanvas.width, outlineCanvas.height, {
     subjectMask: outlineMask,
+    lineArtAlpha,
   })
   outlineCanvas.ctx.putImageData(new ImageData(outlineRgba, outlineCanvas.width, outlineCanvas.height), 0, 0)
   const outline = outlineCanvas.canvas.toDataURL('image/png')

@@ -10,6 +10,7 @@ import {
   effectiveMinArea,
 } from '../src/lib/segmentation/index.js'
 import { generateOutline } from '../src/lib/outline.js'
+import { generateLineArtAlpha, type LineArtModelIO } from '../src/lib/lineart.js'
 import { resizeMaskNearest } from '../src/lib/subjectMask.js'
 import type { Difficulty, Puzzle } from '../src/types/puzzle.js'
 
@@ -58,6 +59,30 @@ async function acquireSubjectMask(inputPath: string): Promise<SubjectMask> {
   return { data: alpha, width: info.width, height: info.height }
 }
 
+const LINE_ART_MODEL_PATH = path.join(ROOT, 'public', 'models', 'line-art.onnx')
+
+let lineArtIO: LineArtModelIO | null | undefined
+/** onnxruntime-node session for the line-art model; null when the model file is absent. */
+async function getLineArtIO(): Promise<LineArtModelIO | null> {
+  if (lineArtIO !== undefined) return lineArtIO
+  if (!existsSync(LINE_ART_MODEL_PATH)) {
+    console.warn('  [warn] public/models/line-art.onnx missing — outlines fall back to the classical pipeline')
+    lineArtIO = null
+    return lineArtIO
+  }
+  const ortModule = await import('onnxruntime-node')
+  const ort = ortModule.default ?? ortModule
+  const session = await ort.InferenceSession.create(LINE_ART_MODEL_PATH)
+  lineArtIO = {
+    async run(input, dims) {
+      const results = await session.run({ [session.inputNames[0]]: new ort.Tensor('float32', input, dims) })
+      const output = results[session.outputNames[0]]
+      return { data: output.data as Float32Array, dims: output.dims }
+    },
+  }
+  return lineArtIO
+}
+
 async function generateOutlineAsset(inputPath: string, slug: string, mask: SubjectMask) {
   const maxDimension = OUTLINE_PARAMS.maxDimension
   const { data, info } = await sharp(inputPath)
@@ -70,7 +95,9 @@ async function generateOutlineAsset(inputPath: string, slug: string, mask: Subje
   const pixels = new Uint8ClampedArray(data.buffer, data.byteOffset, data.length)
   const { width, height } = info
   const subjectMask = resizeMaskNearest(mask.data, mask.width, mask.height, width, height)
-  const outlineRgba = generateOutline(pixels, width, height, { subjectMask })
+  const io = await getLineArtIO()
+  const lineArtAlpha = io ? await generateLineArtAlpha(pixels, width, height, io) : undefined
+  const outlineRgba = generateOutline(pixels, width, height, { subjectMask, lineArtAlpha })
 
   const outline = `puzzles/images/${slug}-outline.png`
   await sharp(Buffer.from(outlineRgba), { raw: { width, height, channels: 4 } })

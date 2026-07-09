@@ -45,12 +45,16 @@ Node (build-time preprocess via `tsx`) and the browser (user photos):
    components, then merging: small regions into their nearest-colored
    neighbor, background regions aggressively (plus a similarity pass that
    collapses gradient banding in skies/snow/bokeh).
-4. The **Free Paint outline** composes three line sources like a real
-   coloring page: a bold closed silhouette (from a coarse segmentation),
-   filled dark details (eyes/noses/mouths via adaptive local-contrast
-   thresholding — inked solid, the way illustrators draw them), and
-   Canny-style structural edges inside the subject. High-contrast region
-   boundaries add a few interior lines; the background stays near-empty.
+4. The **Free Paint outline** is drawn by the
+   [informative-drawings](https://github.com/carolineec/informative-drawings)
+   photo→line-drawing model (Chan et al. 2022, MIT;
+   [ONNX port](https://huggingface.co/rocca/informative-drawings-line-art-onnx)
+   self-hosted at `public/models/line-art.onnx`, ~17MB), run via
+   onnxruntime — onnxruntime-node at build time, onnxruntime-web (wasm) on
+   device. Its soft pencil output becomes coloring-book ink through a
+   per-image adaptive curve (darkness normalized by its 95th percentile).
+   If the model can't load, a classical fallback composes a traced
+   silhouette + edge/dark-mark feature lines instead.
 
 Difficulty scales resolution, color count, smoothing strength, and minimum
 region size together:

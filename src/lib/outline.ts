@@ -1,15 +1,14 @@
 /**
- * Free Paint coloring-book outline. Three line sources, composed like an
- * actual coloring page:
+ * Free Paint coloring-book outline.
  *
- *   1. Subject silhouette (from the coarse segmentation) — bold, closed.
- *   2. Feature lines inside the subject (Canny-style edges on the smoothed
- *      lightness channel) — eyes, nose, mouth, ear lines, leg separations.
- *      These are what make a bear *look like a bear*; region boundaries
- *      alone give a cookie-cutter with shading blobs.
- *   3. Interior/background region boundaries — kept only where the two
- *      regions' colors differ strongly (real structure like mane-vs-face),
- *      so soft shading transitions don't add noise lines.
+ * Preferred composition (when the caller supplies `lineArtAlpha` from the
+ * learned line-drawing model, see lineart.ts): model ink for all the detail
+ * an illustrator would draw, plus a bold traced subject silhouette for
+ * coloring-book pop.
+ *
+ * Classical fallback (no model available): silhouette + Canny-style feature
+ * lines + solid dark marks + high-ΔE region boundaries — recognizable, but
+ * far less detailed.
  */
 
 import { segmentImage, decodeLabelMap, OUTLINE_PARAMS, effectiveMinArea } from './segmentation'
@@ -34,6 +33,8 @@ const REGION_LINE_MIN_DELTA_E = 18
 export interface GenerateOutlineOptions {
   /** Per-pixel foreground confidence (0-255), same width*height layout as `pixels`. */
   subjectMask?: Uint8Array
+  /** Ink alpha (0-255) from the learned line-art model; replaces the classical detail lines. */
+  lineArtAlpha?: Uint8Array
 }
 
 function dilateDisc(mask: Uint8Array, width: number, height: number, radius: number): Uint8Array {
@@ -76,14 +77,43 @@ function erodeDisc(mask: Uint8Array, width: number, height: number, radius: numb
   return out
 }
 
+/** Bold, simplified silhouette strokes traced from the raw subject mask. */
+function traceSilhouette(subjectMask: Uint8Array, width: number, height: number): Uint8Array {
+  const silhouette = new Uint8Array(width * height)
+  const subjectPixels = new Uint8Array(width * height)
+  for (let i = 0; i < subjectPixels.length; i++) subjectPixels[i] = subjectMask[i] > 128 ? 1 : 0
+  for (const loop of traceContours(subjectPixels, width, height, SILHOUETTE_MIN_COMPONENT_AREA)) {
+    const smoothed = chaikinLoop(simplifyLoop(loop, SILHOUETTE_SIMPLIFY_EPSILON), SILHOUETTE_SMOOTH_ROUNDS)
+    strokeLoop(silhouette, width, height, smoothed, SILHOUETTE_BRUSH_RADIUS)
+  }
+  return silhouette
+}
+
 export function generateOutline(
   pixels: Uint8ClampedArray,
   width: number,
   height: number,
   options: GenerateOutlineOptions = {},
 ): Uint8ClampedArray {
-  const { subjectMask } = options
+  const { subjectMask, lineArtAlpha } = options
   const size = width * height
+
+  // Model path: the learned drawing carries the whole page — it draws subject
+  // boundaries itself, and overlaying the mask-traced silhouette only stamps
+  // mask artifacts onto a good drawing (no segmentation needed either).
+  if (lineArtAlpha) {
+    const out = new Uint8ClampedArray(size * 4)
+    for (let i = 0; i < size; i++) {
+      const a = lineArtAlpha[i]
+      if (a === 0) continue
+      const o = i * 4
+      out[o] = INK[0]
+      out[o + 1] = INK[1]
+      out[o + 2] = INK[2]
+      out[o + 3] = a
+    }
+    return out
+  }
 
   const lab = rgbaToLab(pixels, size)
   const smoothedLab = smoothLab(lab, width, height, OUTLINE_PARAMS.smoothing)
@@ -128,15 +158,7 @@ export function generateOutline(
   // Silhouette: traced from the *raw* subject mask (not the segmentation
   // regions — mode filtering erodes thin structures like spires and ears)
   // and redrawn as simplified brush strokes — a drawn line, not a pixel trace.
-  const silhouette = new Uint8Array(size)
-  if (subjectMask) {
-    const subjectPixels = new Uint8Array(size)
-    for (let i = 0; i < size; i++) subjectPixels[i] = subjectMask[i] > 128 ? 1 : 0
-    for (const loop of traceContours(subjectPixels, width, height, SILHOUETTE_MIN_COMPONENT_AREA)) {
-      const smoothed = chaikinLoop(simplifyLoop(loop, SILHOUETTE_SIMPLIFY_EPSILON), SILHOUETTE_SMOOTH_ROUNDS)
-      strokeLoop(silhouette, width, height, smoothed, SILHOUETTE_BRUSH_RADIUS)
-    }
-  }
+  const silhouette = subjectMask ? traceSilhouette(subjectMask, width, height) : new Uint8Array(size)
 
   const regionLines = new Uint8Array(size)
   const minDeltaESq = REGION_LINE_MIN_DELTA_E * REGION_LINE_MIN_DELTA_E

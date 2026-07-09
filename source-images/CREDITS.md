@@ -9,3 +9,7 @@ Seed images sourced from Wikimedia Commons:
 - castle.jpg: "Neuschwanstein Castle 2024-02.jpg" by Wilfredor, CC0. https://commons.wikimedia.org/wiki/File:Neuschwanstein%20Castle%202024-02.jpg
 - unicorn.jpg: "Unicorn Statue (48295045426).jpg" by Paulo O from Halifax, Canada, CC BY 2.0. https://commons.wikimedia.org/wiki/File:Unicorn%20Statue%20%2848295045426%29.jpg (cropped to reduce sky/cloud area for better subject contrast)
 - fairy.jpg: "Flower Fairy 2 (Boston Public Library).jpg" by Hills, Laura Coombs, 1859-1952 (artist); L. Prang &amp; Co. (publisher), Public domain. https://commons.wikimedia.org/wiki/File:Flower%20Fairy%202%20%28Boston%20Public%20Library%29.jpg
+
+Models:
+
+- public/models/line-art.onnx: "Learning to Generate Line Drawings that Convey Geometry and Semantics" (informative-drawings) by Caroline Chan, Frédo Durand, Phillip Isola — MIT license. https://github.com/carolineec/informative-drawings — ONNX export by josephrocca: https://huggingface.co/rocca/informative-drawings-line-art-onnx
