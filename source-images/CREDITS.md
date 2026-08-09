@@ -64,6 +64,22 @@ Seed images sourced from Wikimedia Commons, organized by category subfolder:
 - iguanodon-crystal-palace.jpg: "Iguanodon at Crystal Palace" (Benjamin Waterhouse Hawkins statues) by Jes from Melbourne, Australia, CC BY-SA 2.0. https://commons.wikimedia.org/wiki/File:Iguanodon_Crystal_Palace.jpg
 - dinosaur-egg-nest.jpg: "Eggs of the dinosaur Protoceratops, Gobi Desert, Mongolia" — Wellcome Library, London, uploaded by Fæ, CC BY 4.0. https://commons.wikimedia.org/wiki/File:Egg_nest_of_Oviraptor_AMNH_6508.jpg
 - dinosaur-footprint.jpg: "World's smallest dinosaur footprint, the Hunterian Museum, Glasgow" by Osama Shukir Muhammed Amin FRCP(Glasg), CC BY-SA 4.0. https://commons.wikimedia.org/wiki/File:The_world's_smallest_dinosaur_footprint,_the_Hunterian_Museum,_Glasgow..JPG
+- corythosaurus-skeleton.jpg: "Corythosaurus intermedius ROM.jpg" (skeleton and skull growth series, Royal Ontario Museum) by IJReid, CC BY 4.0. https://commons.wikimedia.org/wiki/File:Corythosaurus_intermedius_ROM.jpg
+- pachycephalosaurus-skull.jpg: "AMNH 1696 Pachycephalosaurus.jpg" (skull of Pachycephalosaurus wyomingensis) by Skye McDavid, CC BY-SA 4.0. https://commons.wikimedia.org/wiki/File:AMNH_1696_Pachycephalosaurus.jpg
+- dilophosaurus-skeleton.jpg: "Dilophosaurus skeleton RTMoP.JPG" by Emily Willoughby (Ferahgo the Assassin), CC BY-SA 3.0. https://commons.wikimedia.org/wiki/File:Dilophosaurus_skeleton_RTMoP.JPG
+- carnotaurus-skeleton.jpg: "Replica Carnotaurus skeleton, DINOSAUR 2.JPG" by BrokenSphere, CC BY-SA 3.0. https://commons.wikimedia.org/wiki/File:Replica_Carnotaurus_skeleton,_DINOSAUR_2.JPG
+- archaeopteryx-fossil.jpg: "NHM - Archaeopteryx lithographica Fossil.jpg" by Wolfgang Sauber (Xenophon), CC BY-SA 3.0. https://commons.wikimedia.org/wiki/File:NHM_-_Archaeopteryx_lithographica_Fossil.jpg
+- therizinosaurus-model.jpg: "Terizinozaur (Therizinosaurus) - JuraPark Baltow.JPG" by Alina Zienowicz (Ala z), CC BY-SA 3.0. https://commons.wikimedia.org/wiki/File:Terizinozaur_(Therizinosaurus)_-_JuraPark_Baltow.JPG
+- baryonyx-skeleton.jpg: "Baryonyx skeleton 1 NHM.JPG" by Ballista, CC BY-SA 3.0. https://commons.wikimedia.org/wiki/File:Baryonyx_skeleton_1_NHM.JPG
+- gallimimus-skeleton.jpg: "Gallimimus bullatus.002 - Natural History Museum of London.JPG" by Fernando Losada Rodríguez (Drow male), CC BY-SA 4.0. https://commons.wikimedia.org/wiki/File:Gallimimus_bullatus.002_-_Natural_History_Museum_of_London.JPG
+- deinonychus-skeleton.jpg: "Deinonychus antirrhopus - AMNH - DSC06297.JPG" by Daderot, CC0. https://commons.wikimedia.org/wiki/File:Deinonychus_antirrhopus_-_AMNH_-_DSC06297.JPG
+- kentrosaurus-skeleton.jpg: "Kentrosaurus skeleton.jpg" by Bildflut, CC0. https://commons.wikimedia.org/wiki/File:Kentrosaurus_skeleton.jpg
+- amargasaurus-skeleton.jpg: "Amargasaurus, MEF Trelew 02.JPG" by Gastón Cuello, CC BY-SA 4.0. https://commons.wikimedia.org/wiki/File:Amargasaurus,_MEF_Trelew_02.JPG
+- mosasaurus-skeleton.jpg: "Mosasaurus hoffmannii - skeleton.jpg" by Ghedoghedo, CC BY-SA 3.0. https://commons.wikimedia.org/wiki/File:Mosasaurus_hoffmannii_-_skeleton.jpg
+- ichthyosaur-fossil.jpg: "Fischsaurier fg01.jpg" (Stenopterygius crassicostatus, an ichthyosaur) by Fritz Geller-Grimm (Dysmachus), CC BY-SA 2.5. https://commons.wikimedia.org/wiki/File:Fischsaurier_fg01.jpg
+- dinosaur-museum-hall.jpg: "Dinosaur room - Finnish Museum of Natural History - DSC04545.JPG" by Daderot, CC0. https://commons.wikimedia.org/wiki/File:Dinosaur_room_-_Finnish_Museum_of_Natural_History_-_DSC04545.JPG
+- dinosaur-park-sculpture.jpg: "Dinosaurs in the Dino Park at Hetland Garden Centre" by Lynne Kirton, CC BY-SA 2.0. https://commons.wikimedia.org/wiki/File:Dinosaurs_in_the_Dino_Park_at_Hetland_Garden_Centre_-_geograph.org.uk_-_6083803.jpg
+- plesiosaurus-skeleton.jpg: "Plesiosaur skeleton, New Walk Museum.JPG" (Atychodracon megacephalus, the "Barrow Kipper") by Poliphilo, CC0. https://commons.wikimedia.org/wiki/File:Plesiosaur_skeleton,_New_Walk_Museum.JPG
 
 Models:
 
