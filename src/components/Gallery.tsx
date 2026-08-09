@@ -1,5 +1,7 @@
-import { useRef } from 'react'
-import type { PuzzleGroup } from '../lib/puzzleGroups'
+import { useMemo, useRef, useState } from 'react'
+import { MY_PHOTOS_CATEGORY, type PuzzleGroup } from '../lib/puzzleGroups'
+import { buildCategoryFolders, categoryLabel } from '../lib/categories'
+import Breadcrumbs from './Breadcrumbs'
 
 interface GalleryProps {
   groups: PuzzleGroup[]
@@ -19,6 +21,8 @@ export default function Gallery({
   onDeleteGroup,
 }: GalleryProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [openCategory, setOpenCategory] = useState<string | null>(null)
+  const folders = useMemo(() => buildCategoryFolders(groups), [groups])
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -34,7 +38,16 @@ export default function Gallery({
   return (
     <main className="gallery">
       <div className="puzzle-header">
-        <h1>PaintPal</h1>
+        {openCategory ? (
+          <Breadcrumbs
+            crumbs={[
+              { label: '🏠', onTap: () => setOpenCategory(null) },
+              { label: categoryLabel(openCategory) },
+            ]}
+          />
+        ) : (
+          <h1>PaintPal</h1>
+        )}
         <button onClick={onShowFinished}>🖼️ Finished</button>
       </div>
       <input
@@ -46,31 +59,51 @@ export default function Gallery({
       />
       {loading ? (
         <p>Loading puzzles...</p>
-      ) : (
+      ) : openCategory === null ? (
         <ul className="puzzle-grid">
-          <li>
-            <button className="puzzle-card add-photo-card" onClick={() => fileInputRef.current?.click()}>
-              <span className="add-photo-plus">＋</span>
-              <p>Add your photo</p>
-            </button>
-          </li>
-          {groups.map((group) => (
-            <li key={group.key} className="puzzle-card-cell">
-              <button className="puzzle-card" onClick={() => onSelectImage(group.key)}>
-                <img src={group.thumbnail} alt={group.name} />
-                <p>{group.name}</p>
+          {folders.map((folder) => (
+            <li key={folder.slug}>
+              <button className="puzzle-card folder-card" onClick={() => setOpenCategory(folder.slug)}>
+                {folder.thumbnail ? (
+                  <img src={folder.thumbnail} alt="" />
+                ) : (
+                  <span className="folder-card-emoji" aria-hidden="true">{folder.emoji}</span>
+                )}
+                <span className="folder-card-count">{folder.count}</span>
+                <p>{folder.label}</p>
               </button>
-              {group.source === 'user' && (
-                <button
-                  className="puzzle-card-delete"
-                  aria-label={`Delete ${group.name}`}
-                  onClick={(e) => handleDelete(e, group)}
-                >
-                  ✕
-                </button>
-              )}
             </li>
           ))}
+        </ul>
+      ) : (
+        <ul className="puzzle-grid">
+          {openCategory === MY_PHOTOS_CATEGORY && (
+            <li>
+              <button className="puzzle-card add-photo-card" onClick={() => fileInputRef.current?.click()}>
+                <span className="add-photo-plus">＋</span>
+                <p>Add your photo</p>
+              </button>
+            </li>
+          )}
+          {groups
+            .filter((group) => group.category === openCategory)
+            .map((group) => (
+              <li key={group.key} className="puzzle-card-cell">
+                <button className="puzzle-card" onClick={() => onSelectImage(group.key)}>
+                  <img src={group.thumbnail} alt={group.name} />
+                  <p>{group.name}</p>
+                </button>
+                {group.source === 'user' && (
+                  <button
+                    className="puzzle-card-delete"
+                    aria-label={`Delete ${group.name}`}
+                    onClick={(e) => handleDelete(e, group)}
+                  >
+                    ✕
+                  </button>
+                )}
+              </li>
+            ))}
         </ul>
       )}
     </main>

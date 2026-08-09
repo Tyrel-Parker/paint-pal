@@ -107,8 +107,8 @@ async function generateOutlineAsset(inputPath: string, slug: string, mask: Subje
   return { outline, outlineWidth: width, outlineHeight: height }
 }
 
-async function processImage(fileName: string): Promise<Puzzle[]> {
-  const inputPath = path.join(SOURCE_DIR, fileName)
+async function processImage(fileName: string, category: string): Promise<Puzzle[]> {
+  const inputPath = path.join(SOURCE_DIR, category, fileName)
   const slug = slugify(fileName)
   const name = humanize(slug)
   const puzzles: Puzzle[] = []
@@ -155,6 +155,7 @@ async function processImage(fileName: string): Promise<Puzzle[]> {
       regions: result.regions,
       palette: result.palette,
       source: 'builtin',
+      category,
       thumbnail,
       outline,
       outlineWidth,
@@ -195,15 +196,54 @@ function generatedAssetsExist(slug: string): boolean {
  * everything — run it after changing pipeline code, since code changes don't
  * show up in source hashes.
  */
+interface SourceEntry {
+  fileName: string
+  category: string
+}
+
+/** Discovers images one level deep inside category subfolders; a file sitting directly in SOURCE_DIR is skipped with a warning. */
+async function discoverSourceImages(): Promise<SourceEntry[]> {
+  const topLevel = await readdir(SOURCE_DIR, { withFileTypes: true })
+  const images: SourceEntry[] = []
+
+  for (const entry of topLevel) {
+    if (entry.isDirectory()) {
+      const category = entry.name
+      const files = await readdir(path.join(SOURCE_DIR, category))
+      for (const fileName of files) {
+        if (IMAGE_EXTENSIONS.has(path.extname(fileName).toLowerCase())) {
+          images.push({ fileName, category })
+        }
+      }
+    } else if (IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+      console.warn(`  [warn] ${entry.name} sits directly in source-images/ — move it into a category subfolder (e.g. animals/, fantasy/, dinosaurs/) to include it.`)
+    }
+  }
+
+  return images
+}
+
 async function main() {
   const force = process.argv.includes('--force')
   await mkdir(IMAGES_DIR, { recursive: true })
 
-  const entries = await readdir(SOURCE_DIR)
-  const imageFiles = entries.filter((entry) => IMAGE_EXTENSIONS.has(path.extname(entry).toLowerCase()))
+  const imageEntries = await discoverSourceImages()
+  const imageFiles = imageEntries.map((entry) => entry.fileName)
 
-  if (imageFiles.length === 0) {
-    console.log('No images found in source-images/. Drop some in and re-run.')
+  const slugToEntries = new Map<string, SourceEntry[]>()
+  for (const entry of imageEntries) {
+    const slug = slugify(entry.fileName)
+    slugToEntries.set(slug, [...(slugToEntries.get(slug) ?? []), entry])
+  }
+  for (const [slug, entries] of slugToEntries) {
+    if (entries.length > 1) {
+      const paths = entries.map((e) => path.join(e.category, e.fileName)).join(', ')
+      throw new Error(`Duplicate puzzle id "${slug}" from multiple source images: ${paths}. Basenames must be unique across the whole source-images/ tree.`)
+    }
+  }
+
+  if (imageEntries.length === 0) {
+    console.log('No images found in source-images/<category>/. Drop some in and re-run.')
     return
   }
 
@@ -217,21 +257,26 @@ async function main() {
 
   const nextCache: Cache = {}
   const manifest: Puzzle[] = []
-  const pending: Array<{ fileName: string; slug: string; hash: string }> = []
+  const pending: Array<{ fileName: string; category: string; slug: string; hash: string }> = []
   let skipped = 0
 
-  for (const fileName of imageFiles) {
+  for (const { fileName, category } of imageEntries) {
     const slug = slugify(fileName)
     const hash = createHash('sha1')
-      .update(await readFile(path.join(SOURCE_DIR, fileName)))
+      .update(await readFile(path.join(SOURCE_DIR, category, fileName)))
       .digest('hex')
     const cachedEntries = manifestBySlug.get(slug)
     if (cache[slug] === hash && cachedEntries?.length === DIFFICULTY_COUNT && generatedAssetsExist(slug)) {
-      manifest.push(...cachedEntries)
+      // Content unchanged, but the category may have moved (e.g. a file relocated into a
+      // new subfolder) — patch it in place rather than reprocessing the whole pipeline.
+      const patchedEntries = cachedEntries.some((entry) => entry.category !== category)
+        ? cachedEntries.map((entry) => ({ ...entry, category }))
+        : cachedEntries
+      manifest.push(...patchedEntries)
       nextCache[slug] = hash
       skipped++
     } else {
-      pending.push({ fileName, slug, hash })
+      pending.push({ fileName, category, slug, hash })
     }
   }
 
@@ -241,9 +286,9 @@ async function main() {
     ;({ segmentForeground } = await import('@imgly/background-removal-node'))
     sharp = (await import('sharp')).default
 
-    for (const { fileName, slug, hash } of pending) {
+    for (const { fileName, category, slug, hash } of pending) {
       console.log(`Processing ${fileName}...`)
-      manifest.push(...(await processImage(fileName)))
+      manifest.push(...(await processImage(fileName, category)))
       nextCache[slug] = hash
     }
   }

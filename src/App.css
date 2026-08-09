@@ -155,6 +155,45 @@
   cursor: pointer;
 }
 
+.folder-card {
+  position: relative;
+  border: 2px solid #e0dcf5;
+  border-radius: 10px;
+  background: #f7f5ff;
+  padding-bottom: 0.25rem;
+}
+
+.folder-card img {
+  border-radius: 8px 8px 0 0;
+}
+
+.folder-card-emoji {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1;
+  font-size: 3rem;
+  border-radius: 8px 8px 0 0;
+}
+
+.folder-card-count {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  min-width: 1.6rem;
+  height: 1.6rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .add-photo-card {
   display: flex;
   flex-direction: column;

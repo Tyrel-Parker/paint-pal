@@ -30,6 +30,8 @@ export interface Puzzle {
   regions: PuzzleRegion[]
   palette: Palette
   source: 'builtin' | 'user'
+  /** Builtin puzzles only, derived from their source-images subfolder; absent for user puzzles (always grouped under "My Photos", see puzzleGroups.ts). */
+  category?: string
   thumbnail: string
   /** Whole-photo line-art outline (transparent background), shared across all difficulty variants of the same image. */
   outline: string

@@ -1,9 +1,15 @@
 import type { Difficulty, Puzzle } from '../types/puzzle'
 
+/** Pseudo-category for user-uploaded photos; never stored, always derived from `source === 'user'`. */
+export const MY_PHOTOS_CATEGORY = 'my-photos'
+/** Fallback for a builtin puzzle that's somehow missing a category. */
+export const UNCATEGORIZED_CATEGORY = 'other'
+
 export interface PuzzleGroup {
   key: string
   name: string
   source: Puzzle['source']
+  category: string
   thumbnail: string
   outline: string
   outlineWidth: number
@@ -25,6 +31,7 @@ export function groupPuzzlesByImage(puzzles: Puzzle[]): PuzzleGroup[] {
         key,
         name: puzzle.name,
         source: puzzle.source,
+        category: puzzle.source === 'user' ? MY_PHOTOS_CATEGORY : (puzzle.category ?? UNCATEGORIZED_CATEGORY),
         thumbnail: puzzle.thumbnail,
         outline: puzzle.outline,
         outlineWidth: puzzle.outlineWidth,
